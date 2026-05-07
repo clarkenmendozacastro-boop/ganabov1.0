@@ -262,4 +262,541 @@ const Card = ({ children, className="" }) => <div className={`bg-zinc-900 border
 const Inp = ({ label, ...p }) => (
   <div className="flex flex-col gap-1">
     {label && <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">{label}</label>}
-    <input className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text
+    <input className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition-all placeholder-zinc-500" {...p}/>
+  </div>
+);
+const Sel = ({ label, children, ...p }) => (
+  <div className="flex flex-col gap-1">
+    {label && <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">{label}</label>}
+    <select className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 transition-all" {...p}>{children}</select>
+  </div>
+);
+const Btn = ({ children, onClick, variant="primary", className="", disabled=false }) => {
+  const v = { primary:"bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500", secondary:"bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-600", danger:"bg-red-900/60 hover:bg-red-800 text-red-300 border border-red-700", ghost:"bg-transparent hover:bg-zinc-800 text-zinc-400 border border-zinc-700" };
+  return <button onClick={onClick} disabled={disabled} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 ${v[variant]||v.primary} ${className}`}>{children}</button>;
+};
+
+// ============================================================
+// LOGIN
+// ============================================================
+function LoginScreen({ onLogin }) {
+  const [u,sU]=useState(""); const [p,sP]=useState(""); const [err,sE]=useState("");
+  const go = () => u==="ganadero"&&p==="bolivia2024" ? onLogin() : sE("Usuario o contraseña incorrectos");
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8"><div className="text-6xl mb-3">🐄</div><h1 className="text-3xl font-black text-white">GanaBov Pro</h1><p className="text-zinc-500 text-sm mt-1">Santa Cruz · Bolivia · Engorde bovino</p></div>
+        <Card className="flex flex-col gap-4">
+          <Inp label="Usuario" value={u} onChange={e=>sU(e.target.value)} placeholder="ganadero"/>
+          <Inp label="Contraseña" type="password" value={p} onChange={e=>sP(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}/>
+          {err&&<p className="text-red-400 text-xs text-center">{err}</p>}
+          <Btn onClick={go} className="w-full py-3 text-base">Ingresar</Btn>
+          <p className="text-zinc-600 text-xs text-center">usuario: <span className="text-zinc-400">ganadero</span> · pass: <span className="text-zinc-400">bolivia2024</span></p>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function Dashboard({ animales, onNav }) {
+  const alertas = animales.filter(a => { const g=calcularGDP(a.pesadas); const r=RAZAS.find(x=>x.id===a.raza)||RAZAS[8]; return a.pesadas?.length>=2 && g<r.gdp_base*0.70; }).length;
+  const listos  = animales.filter(a => { const u=a.pesadas?.length>0?a.pesadas[a.pesadas.length-1].peso:a.peso_inicial; return u>=430; }).length;
+  return (
+    <div className="flex flex-col gap-5">
+      <div><h2 className="text-2xl font-black text-white">Panel Principal</h2><p className="text-zinc-500 text-sm">Santa Cruz · Engorde bovino</p></div>
+      <div className="grid grid-cols-3 gap-3">
+        {[{l:"Animales",v:animales.length,i:"🐄",c:"text-emerald-400"},{l:"Alertas",v:alertas,i:"⚠️",c:"text-amber-400"},{l:"Listos",v:listos,i:"✅",c:"text-sky-400"}].map(s=>(
+          <Card key={s.l} className="text-center py-4"><div className="text-2xl mb-1">{s.i}</div><div className={`text-2xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>
+        ))}
+      </div>
+      {alertas>0&&<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-400 font-bold text-sm mb-1">⚠️ {alertas} animal(es) con bajo rendimiento</div><p className="text-zinc-400 text-xs">Revisá sus raciones.</p><Btn variant="secondary" onClick={()=>onNav("animales")} className="mt-2 text-xs py-1">Ver →</Btn></Card>}
+      {listos>0&&<Card className="border-emerald-700/50 bg-emerald-950/30"><div className="text-emerald-400 font-bold text-sm mb-1">✅ {listos} animal(es) listos para venta</div><p className="text-zinc-400 text-xs">Superaron los 430 kg.</p></Card>}
+      <div className="grid grid-cols-2 gap-3">
+        {[{l:"Mis Animales",i:"🐄",n:"animales"},{l:"Formular Ración",i:"🔬",n:"racion"},{l:"Alimentos y Precios",i:"📦",n:"alimentos"},{l:"Nuevo Animal",i:"➕",n:"nuevo"}].map(m=>(
+          <button key={m.n} onClick={()=>onNav(m.n)} className="bg-zinc-900 border border-zinc-700/60 rounded-2xl p-5 flex flex-col items-center gap-2 hover:border-emerald-600/60 hover:bg-zinc-800/60 transition-all group">
+            <span className="text-3xl group-hover:scale-110 transition-transform">{m.i}</span>
+            <span className="text-sm font-semibold text-zinc-300">{m.l}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// LISTA Y CARD DE ANIMALES
+// ============================================================
+function ListaAnimales({ animales, onSelect, onNav }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-between items-center"><h2 className="text-2xl font-black text-white">Mis Animales</h2><Btn onClick={()=>onNav("nuevo")} className="text-xs py-1.5">+ Agregar</Btn></div>
+      {animales.length===0
+        ? <Card className="text-center py-10"><div className="text-5xl mb-3">🐄</div><p className="text-zinc-500 text-sm">Sin animales registrados</p><Btn onClick={()=>onNav("nuevo")} className="mt-4">Agregar primer animal</Btn></Card>
+        : <div className="flex flex-col gap-3">{animales.map(a=><AnimalCard key={a.id} animal={a} onClick={()=>onSelect(a)}/>)}</div>}
+    </div>
+  );
+}
+
+function AnimalCard({ animal, onClick }) {
+  const raza=RAZAS.find(r=>r.id===animal.raza)||RAZAS[8];
+  const ult=animal.pesadas?.length>0?animal.pesadas[animal.pesadas.length-1].peso:animal.peso_inicial;
+  const gdp=calcularGDP(animal.pesadas);
+  const col=animal.pesadas?.length<2?"gray":gdp>=raza.gdp_base*0.85?"green":gdp>=raza.gdp_base*0.60?"yellow":"red";
+  return (
+    <button onClick={onClick} className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 text-left hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all">
+      <div className="flex justify-between items-start mb-3">
+        <div><div className="font-bold text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div>
+        <Badge color={col}>{col==="green"?"Bien":col==="yellow"?"Regular":col==="red"?"Alerta":"Sin datos"}</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[{v:`${ult} kg`,l:"actual",c:"text-emerald-400"},{v:`${animal.peso_inicial} kg`,l:"entrada",c:"text-sky-400"},{v:gdp>0?`${gdp.toFixed(2)}/d`:"—",l:"GDP kg",c:"text-amber-400"}].map(s=>(
+          <div key={s.l}><div className={`font-black text-lg ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+// ============================================================
+// NUEVO ANIMAL
+// ============================================================
+function NuevoAnimal({ onGuardar, onBack }) {
+  const [f,sF]=useState({nombre:"",raza:"otro",sexo:"macho",peso_inicial:"",fecha_entrada:new Date().toISOString().slice(0,10),notas:""});
+  const set=(k,v)=>sF(x=>({...x,[k]:v}));
+  const guardar=()=>{
+    if(!f.nombre||!f.peso_inicial)return alert("Completá nombre y peso");
+    onGuardar({...f,id:Date.now().toString(),peso_inicial:parseFloat(f.peso_inicial),pesadas:[{fecha:f.fecha_entrada,peso:parseFloat(f.peso_inicial),nota:"Peso de entrada"}]});
+  };
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><h2 className="text-2xl font-black text-white">Nuevo Animal</h2></div>
+      <Card className="flex flex-col gap-4">
+        <Inp label="Nombre o N° de caravana" value={f.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Toro #001"/>
+        <Sel label="Raza" value={f.raza} onChange={e=>set("raza",e.target.value)}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel>
+        <Sel label="Sexo" value={f.sexo} onChange={e=>set("sexo",e.target.value)}><option value="macho">Macho (toro/novillo)</option><option value="hembra">Hembra</option></Sel>
+        <Inp label="Peso inicial (kg)" type="number" value={f.peso_inicial} onChange={e=>set("peso_inicial",e.target.value)} placeholder="Ej: 220"/>
+        <Inp label="Fecha de entrada" type="date" value={f.fecha_entrada} onChange={e=>set("fecha_entrada",e.target.value)}/>
+        <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Notas (opcional)</label><textarea className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none h-16 placeholder-zinc-500" value={f.notas} onChange={e=>set("notas",e.target.value)} placeholder="Observaciones..."/></div>
+        <Btn onClick={guardar} className="w-full py-3">Guardar Animal</Btn>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// DETALLE ANIMAL
+// ============================================================
+function DetalleAnimal({ animal, onUpdate, onDelete, onBack, preciosUsr }) {
+  const [tab,sT]=useState("info");
+  const [np,sNP]=useState({fecha:new Date().toISOString().slice(0,10),peso:"",nota:""});
+  const [confirmDel,sCD]=useState(false);
+  const raza=RAZAS.find(r=>r.id===animal.raza)||RAZAS[8];
+  const gdp=calcularGDP(animal.pesadas);
+  const ult=animal.pesadas?.length>0?animal.pesadas[animal.pesadas.length-1].peso:animal.peso_inicial;
+  const ev=evaluarVenta(ult,gdp,raza);
+  const aj=recomendarAjuste(gdp,raza,animal.raza==="criollo"||animal.raza==="criollo_cruce");
+  const p450=calcularProyeccion(ult,450,gdp>0?gdp:raza.gdp_base,raza);
+  const p500=calcularProyeccion(ult,500,gdp>0?gdp:raza.gdp_base,raza);
+  const bajRend=animal.pesadas?.length>=2&&gdp<raza.gdp_base*0.70;
+
+  const addPesada=()=>{
+    if(!np.peso)return;
+    onUpdate({...animal,pesadas:[...(animal.pesadas||[]),{...np,peso:parseFloat(np.peso)}]});
+    sNP({fecha:new Date().toISOString().slice(0,10),peso:"",nota:""});
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><div><div className="text-xl font-black text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div></div>
+        {!confirmDel
+          ? <Btn variant="danger" onClick={()=>sCD(true)} className="text-xs py-1 px-3">🗑️ Eliminar</Btn>
+          : <div className="flex gap-1"><Btn variant="danger" onClick={()=>onDelete(animal.id)} className="text-xs py-1 px-2">✓ Confirmar</Btn><Btn variant="ghost" onClick={()=>sCD(false)} className="text-xs py-1 px-2">Cancelar</Btn></div>}
+      </div>
+
+      {bajRend&&(
+        <Card className="border-red-700/50 bg-red-950/30">
+          <div className="text-red-400 font-bold text-sm mb-2">⚠️ Bajo rendimiento — GDP: {gdp.toFixed(3)} kg/día · Esperado: {raza.gdp_base}</div>
+          {aj.map((a,i)=>(
+            <div key={i} className="bg-zinc-900 rounded-xl p-3 mb-2"><div className="text-amber-400 font-semibold text-xs">{a.titulo}</div><div className="text-zinc-400 text-xs mt-0.5">{a.detalle}</div>{a.costo&&<div className="text-emerald-400 text-xs mt-1">Costo extra: {a.costo}</div>}</div>
+          ))}
+        </Card>
+      )}
+
+      <div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">
+        {[["info","Info"],["pesadas","Pesadas"],["proyeccion","Proyección"],["venta","Venta"]].map(([id,lb])=>(
+          <button key={id} onClick={()=>sT(id)} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tab===id?"bg-emerald-600 text-white":"text-zinc-400"}`}>{lb}</button>
+        ))}
+      </div>
+
+      {tab==="info"&&(
+        <div className="grid grid-cols-2 gap-3">
+          {[{l:"Peso inicial",v:`${animal.peso_inicial} kg`,c:"text-zinc-300"},{l:"Peso actual",v:`${ult} kg`,c:"text-emerald-400"},{l:"Ganancia total",v:`${(ult-animal.peso_inicial).toFixed(0)} kg`,c:"text-sky-400"},{l:"GDP promedio",v:gdp>0?`${gdp.toFixed(3)} kg/d`:"Sin datos",c:"text-amber-400"}].map(s=>(
+            <Card key={s.l} className="text-center py-3"><div className={`text-xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>
+          ))}
+          {animal.notas&&<Card className="col-span-2"><p className="text-zinc-400 text-sm">📝 {animal.notas}</p></Card>}
+        </div>
+      )}
+
+      {tab==="pesadas"&&(
+        <div className="flex flex-col gap-3">
+          <Card className="flex flex-col gap-3">
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Registrar pesada</div>
+            <Inp label="Fecha" type="date" value={np.fecha} onChange={e=>sNP(p=>({...p,fecha:e.target.value}))}/>
+            <Inp label="Peso (kg)" type="number" value={np.peso} onChange={e=>sNP(p=>({...p,peso:e.target.value}))} placeholder="285"/>
+            <Inp label="Nota (opcional)" value={np.nota} onChange={e=>sNP(p=>({...p,nota:e.target.value}))} placeholder="Observación..."/>
+            <Btn onClick={addPesada}>Registrar</Btn>
+          </Card>
+          {[...(animal.pesadas||[])].reverse().map((p,i)=>(
+            <Card key={i} className="py-3"><div className="flex justify-between items-center"><div><div className="text-white font-bold">{p.peso} kg</div><div className="text-zinc-500 text-xs">{p.fecha}{p.nota?` · ${p.nota}`:""}</div></div><Badge color="gray">{i===animal.pesadas.length-1?"entrada":"pesada"}</Badge></div></Card>
+          ))}
+        </div>
+      )}
+
+      {tab==="proyeccion"&&(
+        <div className="flex flex-col gap-3">
+          {[{meta:450,proj:p450},{meta:500,proj:p500}].map(({meta,proj})=>proj?(
+            <Card key={meta}>
+              <div className="text-emerald-400 font-black text-lg mb-3">Meta: {meta} kg</div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-white font-black text-xl">{proj.dias} días</div><div className="text-zinc-500 text-xs">{proj.meses} meses</div></div>
+                <div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-amber-400 font-black text-xl">{proj.canal} kg</div><div className="text-zinc-500 text-xs">peso canal</div></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[{v:`${proj.carneLimpia} kg`,l:"carne",c:"text-emerald-400"},{v:`${proj.huesos} kg`,l:"huesos",c:"text-zinc-300"},{v:`${proj.viseras} kg`,l:"vísceras",c:"text-zinc-300"}].map(s=>(
+                  <div key={s.l} className="bg-zinc-800 rounded-xl p-2"><div className={`font-bold text-sm ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>
+                ))}
+              </div>
+            </Card>
+          ):<Card key={meta}><p className="text-zinc-500 text-sm text-center">Ya superó los {meta} kg</p></Card>)}
+          <Card className="bg-zinc-800/40 border-zinc-600/40"><p className="text-zinc-500 text-xs">* Basado en GDP {gdp>0?"real del animal":"esperado para la raza"}. Varía según alimentación y condiciones.</p></Card>
+        </div>
+      )}
+
+      {tab==="venta"&&(
+        <div className="flex flex-col gap-3">
+          {animal.pesadas?.length>=2?(
+            <Card className={ev.conviene?"border-emerald-700/50 bg-emerald-950/30":"border-amber-700/50 bg-amber-950/30"}>
+              <div className={`font-black text-base mb-2 ${ev.conviene?"text-emerald-400":"text-amber-400"}`}>{ev.conviene?"✅ Evalúa vender ahora":"⏳ Continuar engorde"}</div>
+              <p className="text-zinc-300 text-sm">{ev.recomendacion}</p>
+              <div className="mt-3 pt-3 border-t border-zinc-700 flex flex-col gap-1">
+                <div className="flex justify-between text-xs"><span className="text-zinc-500">GDP real</span><span className="text-white font-bold">{gdp.toFixed(3)} kg/día</span></div>
+                <div className="flex justify-between text-xs"><span className="text-zinc-500">Eficiencia</span><Badge color={ev.eficiencia==="buena"?"green":ev.eficiencia==="regular"?"yellow":"red"}>{ev.eficiencia}</Badge></div>
+              </div>
+            </Card>
+          ):<Card><p className="text-zinc-500 text-sm text-center">Registrá al menos 2 pesadas para la recomendación de venta</p></Card>}
+          <Card><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Calculadora de venta</div><VentaCalc pesoActual={ult} raza={raza}/></Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VentaCalc({ pesoActual, raza }) {
+  const [pV,sPV]=useState("22"); const [pC,sPC]=useState("65");
+  const pc=raza.pc_canal, canal=Math.round(pesoActual*pc), huesos=Math.round(canal*0.20), carne=canal-huesos, viseras=Math.round(pesoActual*0.08);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3"><Inp label="Bs/kg peso vivo" type="number" value={pV} onChange={e=>sPV(e.target.value)}/><Inp label="Bs/kg carne limpia" type="number" value={pC} onChange={e=>sPC(e.target.value)}/></div>
+      <div className="bg-zinc-800 rounded-xl p-4 flex flex-col gap-2">
+        <div className="flex justify-between text-sm"><span className="text-zinc-400">Venta en pie ({pesoActual} kg)</span><span className="text-emerald-400 font-bold">Bs. {(pesoActual*parseFloat(pV||0)).toFixed(0)}</span></div>
+        <div className="flex justify-between text-sm"><span className="text-zinc-400">Venta por carne ({carne} kg)</span><span className="text-sky-400 font-bold">Bs. {(carne*parseFloat(pC||0)).toFixed(0)}</span></div>
+        <div className="border-t border-zinc-700 mt-1 pt-2 text-zinc-500 text-xs">Canal: {canal} kg · Huesos: {huesos} kg · Vísceras: {viseras} kg · Rendimiento: {(pc*100).toFixed(0)}%</div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// GESTIÓN DE ALIMENTOS Y PRECIOS
+// ============================================================
+function GestionAlimentos({ preciosUsr, onPrecio, customAl, onAddCustom }) {
+  const [busq,sB]=useState(""); const [editId,sEI]=useState(null); const [editVal,sEV]=useState("");
+  const [showForm,sSF]=useState(false);
+  const [form,sForm]=useState({nombre:"",tipo:"energetico",ms:"",prot:"",em:"",fdn:"30",max_ms_pct:""});
+  const todos=[...ALIMENTOS_BASE,...customAl];
+  const filtrados=todos.filter(a=>a.nombre.toLowerCase().includes(busq.toLowerCase())||TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
+  const save=(id)=>{const v=parseFloat(editVal);if(!isNaN(v)&&v>=0)onPrecio(id,v);sEI(null);};
+  const guardar=()=>{
+    if(!form.nombre||!form.ms)return alert("Completá nombre y MS%");
+    onAddCustom({...form,id:`c_${Date.now()}`,ms:+form.ms,prot:+(form.prot||0),em:+(form.em||0),fdn:+(form.fdn||30),max_ms_pct:form.max_ms_pct?+form.max_ms_pct:null,precio_kg:0});
+    sForm({nombre:"",tipo:"energetico",ms:"",prot:"",em:"",fdn:"30",max_ms_pct:""});sSF(false);
+  };
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-between items-center"><h2 className="text-2xl font-black text-white">Alimentos y Precios</h2><Btn onClick={()=>sSF(!showForm)} className="text-xs py-1.5">+ Agregar</Btn></div>
+      <Card className="bg-sky-950/30 border-sky-700/40"><p className="text-sky-300 text-xs">💡 Tocá el precio en verde para editarlo. Tus precios se usan en todos los cálculos automáticamente.</p></Card>
+      {showForm&&(
+        <Card className="flex flex-col gap-3">
+          <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Nuevo alimento personalizado</div>
+          <Inp label="Nombre" value={form.nombre} onChange={e=>sForm(f=>({...f,nombre:e.target.value}))} placeholder="Ej: Pasto Colonial"/>
+          <Sel label="Tipo" value={form.tipo} onChange={e=>sForm(f=>({...f,tipo:e.target.value}))}>{TIPOS_ORDER.map(t=><option key={t} value={t}>{TIPO_LABELS[t]}</option>)}</Sel>
+          <div className="grid grid-cols-2 gap-3">
+            <Inp label="MS %" type="number" value={form.ms} onChange={e=>sForm(f=>({...f,ms:e.target.value}))} placeholder="22"/>
+            <Inp label="PB %" type="number" value={form.prot} onChange={e=>sForm(f=>({...f,prot:e.target.value}))} placeholder="9"/>
+            <Inp label="EM Mcal/kg MS" type="number" value={form.em} onChange={e=>sForm(f=>({...f,em:e.target.value}))} placeholder="2.1"/>
+            <Inp label="FDN %" type="number" value={form.fdn} onChange={e=>sForm(f=>({...f,fdn:e.target.value}))} placeholder="65"/>
+            <Inp label="Máx MS ración %" type="number" value={form.max_ms_pct} onChange={e=>sForm(f=>({...f,max_ms_pct:e.target.value}))} placeholder="Opcional"/>
+          </div>
+          <div className="flex gap-2"><Btn onClick={guardar} className="flex-1">Guardar</Btn><Btn variant="secondary" onClick={()=>sSF(false)} className="flex-1">Cancelar</Btn></div>
+        </Card>
+      )}
+      <Inp placeholder="Buscar alimento..." value={busq} onChange={e=>sB(e.target.value)}/>
+      {TIPOS_ORDER.map(tipo=>{
+        const grupo=filtrados.filter(a=>a.tipo===tipo);
+        if(!grupo.length)return null;
+        return (
+          <div key={tipo}>
+            <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">{TIPO_LABELS[tipo]}</div>
+            <div className="flex flex-col gap-2">
+              {grupo.map(al=>{
+                const precio=preciosUsr[al.id]!==undefined?preciosUsr[al.id]:al.precio_kg;
+                return (
+                  <Card key={al.id} className="py-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 pr-2">
+                        <div className="text-white font-semibold text-sm">{al.nombre}</div>
+                        <div className="text-zinc-500 text-xs mt-0.5">MS:{al.ms}% · PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}%</div>
+                        {al.max_ms_pct&&<div className="text-zinc-600 text-xs">Máx ración: {al.max_ms_pct}% MS</div>}
+                      </div>
+                      <div className="text-right">
+                        {editId===al.id?(
+                          <div className="flex items-center gap-1">
+                            <input type="number" value={editVal} onChange={e=>sEV(e.target.value)} className="bg-zinc-700 border border-emerald-500 rounded-lg px-2 py-1 text-white text-sm w-20 focus:outline-none" autoFocus onKeyDown={e=>e.key==="Enter"&&save(al.id)}/>
+                            <button onClick={()=>save(al.id)} className="text-emerald-400 font-bold px-1">✓</button>
+                            <button onClick={()=>sEI(null)} className="text-zinc-500 px-1">✕</button>
+                          </div>
+                        ):(
+                          <button onClick={()=>{sEI(al.id);sEV(precio.toString());}} className="text-emerald-400 font-bold text-sm hover:text-emerald-300 underline underline-offset-2">Bs.{precio.toFixed(2)}/kg ✏️</button>
+                        )}
+                        {al.id?.startsWith("c_")&&<div className="mt-1"><Badge color="blue">Custom</Badge></div>}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================
+// CALCULADORA DE RACIÓN
+// ============================================================
+function CalculadoraRacion({ preciosUsr, customAl }) {
+  const [peso,sP]=useState(""); const [raza,sR]=useState("otro");
+  const [selIds,sS]=useState(new Set()); const [busq,sB]=useState("");
+  const [resultado,sRes]=useState(null); const [showSel,sSS]=useState(false);
+  const [modo,sM]=useState("formulado");
+
+  const todosAl=[...ALIMENTOS_BASE,...customAl];
+  const filtrados=todosAl.filter(a=>a.nombre.toLowerCase().includes(busq.toLowerCase())||TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
+  const razaObj=RAZAS.find(r=>r.id===raza)||RAZAS[8];
+  const seleccionados=todosAl.filter(a=>selIds.has(a.id));
+  const toggle=(id)=>sS(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  const calcular=()=>{
+    if(!peso||parseFloat(peso)<80)return alert("Peso mínimo 80 kg");
+    if(modo==="formulado"&&seleccionados.length===0)return alert("Seleccioná al menos un alimento");
+    if(modo==="estandar"){const req=calcularRequerimientos(peso,razaObj);sRes({tipo:"estandar",req});}
+    else{const res=formularRacion(seleccionados,peso,razaObj,preciosUsr);sRes({tipo:"formulado",res});}
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración</h2>
+      <Card className="flex flex-col gap-4">
+        <Inp label="Peso vivo (kg)" type="number" value={peso} onChange={e=>{sP(e.target.value);sRes(null);}} placeholder="Ej: 280"/>
+        <Sel label="Raza" value={raza} onChange={e=>{sR(e.target.value);sRes(null);}}>
+          {RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}
+        </Sel>
+        <div className="flex gap-2">
+          {[["estandar","🌾 Estándar NRC"],["formulado","🔬 Formular con mis alimentos"]].map(([id,lb])=>(
+            <button key={id} onClick={()=>{sM(id);sRes(null);}} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border ${modo===id?"bg-emerald-600 border-emerald-500 text-white":"bg-zinc-800 border-zinc-600 text-zinc-400"}`}>{lb}</button>
+          ))}
+        </div>
+        {modo==="formulado"&&(
+          <div className="flex flex-col gap-3">
+            <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Elegí los alimentos que tenés. La app usa <span className="text-emerald-400 font-semibold">Cuadrado de Pearson + NRC-2000</span> para calcular las cantidades óptimas respetando MS 2-3% PV, FDN mínimo y seguridad ruminal.</p></div>
+            <Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}` }</Btn>
+            {showSel&&(
+              <div className="flex flex-col gap-1">
+                <Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>
+                {TIPOS_ORDER.map(tipo=>{
+                  const gr=filtrados.filter(a=>a.tipo===tipo);
+                  if(!gr.length)return null;
+                  return(
+                    <div key={tipo}>
+                      <div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>
+                      {gr.map(al=>(
+                        <button key={al.id} onClick={()=>{toggle(al.id);sRes(null);}} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id)?"border-emerald-600 bg-emerald-950/40 text-emerald-300":"border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}>
+                          <div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id)?"✓":""}</span></div>
+                          <span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id]??al.precio_kg).toFixed(2)}/kg</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {seleccionados.length>0&&(
+              <div className="flex flex-wrap gap-1.5">
+                {seleccionados.map(al=>(
+                  <span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">
+                    {al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <Btn onClick={calcular} className="w-full py-3 text-base">Calcular Ración</Btn>
+      </Card>
+
+      {/* RESULTADO ESTÁNDAR */}
+      {resultado?.tipo==="estandar"&&resultado.req&&(()=>{
+        const req=resultado.req; const pv=parseFloat(peso);
+        return(
+          <Card>
+            <div className="text-emerald-400 font-black text-base mb-1">🌾 Requerimientos NRC-2000</div>
+            <p className="text-zinc-500 text-xs mb-4">{razaObj.nombre} · GDP esperado: {req.gdp} kg/día · Trópico boliviano</p>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[{l:"EM/día",v:`${req.em_total.toFixed(2)} Mcal`,c:"text-amber-400"},{l:"PB/día",v:`${req.pb_total.toFixed(0)} g`,c:"text-sky-400"},{l:"MS óptima",v:`${req.ms_opt.toFixed(1)} kg`,c:"text-emerald-400"}].map(s=>(
+                <div key={s.l} className="bg-zinc-800 rounded-xl p-3 text-center"><div className={`font-black text-base ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></div>
+              ))}
+            </div>
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Ración diaria sugerida</div>
+            {[
+              {n:"Pasto Mombasa/Marandu (fresco)",kg:(req.ms_opt*0.60/0.22).toFixed(1)},
+              {n:"Maíz Amarillo (grano)",kg:(req.ms_opt*0.22/0.88).toFixed(1)},
+              {n:"Torta de Soya 44%",kg:(req.ms_opt*0.08/0.88).toFixed(1)},
+              {n:"Sal Mineral",kg:"0.08"},
+              {n:"Bicarbonato de Sodio",kg:"0.10"},
+            ].map(r=>(
+              <div key={r.n} className="flex justify-between py-2 border-b border-zinc-800 last:border-0">
+                <span className="text-zinc-300 text-sm">{r.n}</span><span className="text-emerald-400 font-bold text-sm">{r.kg} kg</span>
+              </div>
+            ))}
+            <div className="mt-3 bg-zinc-800/50 rounded-xl p-3"><p className="text-zinc-500 text-xs">MS rango saludable: {req.ms_min.toFixed(1)} – {req.ms_max.toFixed(1)} kg/día ({((req.ms_min/pv)*100).toFixed(0)}–{((req.ms_max/pv)*100).toFixed(0)}% PV)</p></div>
+          </Card>
+        );
+      })()}
+
+      {/* RESULTADO FORMULADO */}
+      {resultado?.tipo==="formulado"&&resultado.res&&(()=>{
+        const r=resultado.res;
+        const bEM=parseFloat(r.balance_em), bPB=parseFloat(r.balance_prot);
+        const msPV=parseFloat(r.ms_pct_pv);
+        const msOk=msPV>=2.0&&msPV<=3.0;
+        return(
+          <div className="flex flex-col gap-3">
+            {r.alertaAcidosis&&(
+              <Card className="border-red-700/50 bg-red-950/30">
+                <div className="text-red-400 font-bold text-sm mb-1">🚨 Riesgo de acidosis ruminal</div>
+                <p className="text-zinc-400 text-xs">FDN: {r.fdn_pct}% de la MS (mín. recomendado: 35%). Agregá heno o paja. Considerá 100 g/día de bicarbonato de sodio como buffer.</p>
+              </Card>
+            )}
+            {r.alertaPastoFresco&&!r.alertaAcidosis&&(
+              <Card className="border-amber-700/50 bg-amber-950/30">
+                <div className="text-amber-400 font-bold text-sm mb-1">⚠️ Precaución — pasto fresco</div>
+                <p className="text-zinc-400 text-xs">Alta proporción de pasto verde. Puede causar timpanismo o acidez. Suplementá con heno seco y bicarbonato.</p>
+              </Card>
+            )}
+            <Card>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-sky-400 font-black text-base">🔬 Ración formulada</div>
+                <Badge color="purple">Pearson + NRC</Badge>
+              </div>
+              <p className="text-zinc-500 text-xs mb-4">Método: {r.metodo}</p>
+              <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg tal cual / día</div>
+              <div className="flex flex-col gap-2 mb-4">
+                {r.racion.map((al,i)=>(
+                  <div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3">
+                    <div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div>
+                    <div className="text-right">
+                      <div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div>
+                      <div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  {l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% del PV`,ok:msOk},
+                  {l:"FDN",v:`${r.fdn_pct}%`,sub:"mín. 35%",ok:parseFloat(r.fdn_pct)>=35},
+                  {l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`,ok:bEM>=-0.5},
+                  {l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`,ok:bPB>=-30},
+                  {l:"Costo/día",v:`Bs. ${r.costo_total}`,sub:"",ok:true},
+                  {l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`,sub:"",ok:true},
+                ].map(s=>(
+                  <div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className={`font-bold text-sm ${s.ok?"text-emerald-400":"text-red-400"}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>
+                ))}
+              </div>
+              <div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5">
+                <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances (aportado − requerido)</div>
+                {[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína bruta",v:r.balance_prot,u:"g"}].map(b=>{
+                  const ok=parseFloat(b.v)>=-0.5;
+                  return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;
+                })}
+              </div>
+            </Card>
+            {(bEM<-1.0||bPB<-80)&&(
+              <Card className="border-amber-700/50 bg-amber-950/30">
+                <div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div>
+                <p className="text-zinc-400 text-xs">{bEM<-1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{bPB<-80?"Déficit de proteína → agregá torta de soya, harina de carne o gallinaza.":""}</p>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ============================================================
+// APP PRINCIPAL
+// ============================================================
+export default function App() {
+  const [logged,sL]=useState(false);
+  const [nav,sN]=useState("dashboard");
+  const [animales,sA]=useState([]);
+  const [animalSel,sAS]=useState(null);
+  const [preciosUsr,sPU]=useState({});
+  const [customAl,sCA]=useState([]);
+
+  const navItems=[{id:"dashboard",i:"🏠",l:"Inicio"},{id:"animales",i:"🐄",l:"Animales"},{id:"racion",i:"🔬",l:"Ración"},{id:"alimentos",i:"📦",l:"Alimentos"}];
+
+  if(!logged)return <LoginScreen onLogin={()=>sL(true)}/>;
+
+  return(
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span><Badge color="gray">Santa Cruz</Badge></div>
+        <button onClick={()=>sL(false)} className="text-zinc-500 text-xs hover:text-zinc-300">Salir</button>
+      </div>
+      <div className="max-w-lg mx-auto px-4 py-5 pb-28">
+        {nav==="dashboard"&&<Dashboard animales={animales} onNav={sN}/>}
+        {nav==="animales"&&<ListaAnimales animales={animales} onSelect={a=>{sAS(a);sN("detalle");}} onNav={sN}/>}
+        {nav==="nuevo"&&<NuevoAnimal onGuardar={a=>{sA(p=>[...p,a]);sN("animales");}} onBack={()=>sN("animales")}/>}
+        {nav==="detalle"&&animalSel&&<DetalleAnimal animal={animalSel} onUpdate={a=>{sA(p=>p.map(x=>x.id===a.id?a:x));sAS(a);}} onDelete={id=>{sA(p=>p.filter(x=>x.id!==id));sN("animales");sAS(null);}} onBack={()=>sN("animales")} preciosUsr={preciosUsr}/>}
+        {nav==="racion"&&<CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl}/>}
+        {nav==="alimentos"&&<GestionAlimentos preciosUsr={preciosUsr} onPrecio={(id,v)=>sPU(p=>({...p,[id]:v}))} customAl={customAl} onAddCustom={a=>sCA(p=>[...p,a])}/>}
+      </div>
+      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 flex">
+        {navItems.map(item=>(
+          <button key={item.id} onClick={()=>sN(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav===item.id||(nav==="detalle"&&item.id==="animales")?"text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}>
+            <span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+       
