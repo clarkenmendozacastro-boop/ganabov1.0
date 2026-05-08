@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import {
   collection,
   addDoc,
@@ -11,6 +11,12 @@ import {
   setDoc,
   getDoc,
 } from "firebase/firestore";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "firebase/auth";
 
 // ============================================================
 // CONFIGURACIÓN — cambiá estos valores cuando quieras
