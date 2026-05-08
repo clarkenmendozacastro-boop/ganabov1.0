@@ -22,6 +22,7 @@ import {
 // CONFIGURACIÓN — cambiá estos valores cuando quieras
 // ============================================================
 const ADMIN_USER = "ganadero";
+const ADMIN_EMAIL = "ganabovProappcuenta@gmail.com";
 const DEFAULT_PASS = "bolivia2024";
 const PASS_DOC = "config/password";
 
