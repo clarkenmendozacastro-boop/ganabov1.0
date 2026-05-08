@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+ import { useState, useEffect } from "react";
 import { db, auth } from "./firebase";
 import {
   collection,
@@ -12,10 +12,9 @@ import {
   getDoc,
 } from "firebase/firestore";
 import {
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
 } from "firebase/auth";
 
 // ============================================================
@@ -273,7 +272,7 @@ const Badge = ({ children, color = "green" }) => {
 const Card = ({ children, className = "" }) => <div className={`bg-zinc-900 border border-zinc-700/60 rounded-2xl p-5 ${className}`}>{children}</div>;
 const Inp = ({ label, ...p }) => (
   <div className="flex flex-col gap-1">
-    {label && <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">{label}</label>}
+     {label && <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">{label}</label>}
     <input className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition-all placeholder-zinc-500" {...p} />
   </div>
 );
@@ -291,24 +290,51 @@ const Btn = ({ children, onClick, variant = "primary", className = "", disabled 
 // ============================================================
 // LOGIN
 // ============================================================
-function LoginScreen({ onLogin }) {
-  const [u, sU] = useState(""); const [p, sP] = useState(""); const [err, sE] = useState(""); const [loading, sL] = useState(false);
-   
+ function LoginScreen({ onLogin }) {
+  const [u, sU] = useState("");
+  const [p, sP] = useState("");
+  const [err, sE] = useState("");
+  const [loading, sL] = useState(false);
+
+  const go = async () => {
+    if (!u || !p) return sE("Completá correo y contraseña");
+    sL(true);
+    sE("");
+    try {
+      await signInWithEmailAndPassword(auth, u, p);
+      onLogin();
+    } catch (e) {
+      if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") {
+        sE("Correo o contraseña incorrectos");
+      } else if (e.code === "auth/invalid-email") {
+        sE("El correo no es válido");
+      } else {
+        sE("Error al ingresar. Intentá de nuevo");
+      }
+    }
+    sL(false);
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8"><div className="text-6xl mb-3">🐄</div><h1 className="text-3xl font-black text-white">GanaBov Pro</h1><p className="text-zinc-500 text-sm mt-1">Santa Cruz · Bolivia · Engorde bovino</p></div>
+        <div className="text-center mb-8">
+          <div className="text-6xl mb-3">🐄</div>
+          <h1 className="text-3xl font-black text-white">GanaBov Pro</h1>
+          <p className="text-zinc-500 text-sm mt-1">Santa Cruz · Bolivia · Engorde bovino</p>
+        </div>
         <Card className="flex flex-col gap-4">
           <Inp label="Correo" value={u} onChange={e => sU(e.target.value)} placeholder="correo@gmail.com" />
           <Inp label="Contraseña" type="password" value={p} onChange={e => sP(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && go()} />
           {err && <p className="text-red-400 text-xs text-center">{err}</p>}
-          <Btn onClick={go} disabled={loading} className="w-full py-3 text-base">{loading ? "Verificando..." : "Ingresar"}</Btn>
+          <Btn onClick={go} disabled={loading} className="w-full py-3 text-base">
+            {loading ? "Verificando..." : "Ingresar"}
+          </Btn>
         </Card>
       </div>
     </div>
   );
-}
-
+ }
 // ============================================================
 // CAMBIAR CONTRASEÑA
 // ============================================================
@@ -636,7 +662,7 @@ export default function App() {
     <div className="min-h-screen bg-zinc-950 text-white">
       <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span><Badge color="gray">Santa Cruz</Badge></div>
-        <button onClick={() => { sL(false); sN("dashboard"); }} className="text-zinc-500 text-xs hover:text-zinc-300">Salir</button>
+        <button onClick={async () => { await signOut(auth); sL(false); sN("dashboard"); }} className="text-zinc-500 text-xs hover:text-zinc-300">Salir</button>
       </div>
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
         {nav === "dashboard" && <Dashboard animales={animales} onNav={sN} />}
