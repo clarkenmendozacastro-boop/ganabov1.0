@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 const ADMIN_USER = "ganadero";
 const STORAGE_KEY_PASS = "ganabov:password";
 const STORAGE_KEY_DATA = "ganabov:data";
-const DEFAULT_PASS = "bolivia2024";
+const DEFAULT_PASS = "bolivia2025";
 
 // ============================================================
 // BASE DE DATOS ALIMENTOS (Morrison + Tropicales Bolivia)
