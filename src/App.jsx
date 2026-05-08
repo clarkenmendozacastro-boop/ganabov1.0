@@ -293,19 +293,13 @@ const Btn = ({ children, onClick, variant = "primary", className = "", disabled 
 // ============================================================
 function LoginScreen({ onLogin }) {
   const [u, sU] = useState(""); const [p, sP] = useState(""); const [err, sE] = useState(""); const [loading, sL] = useState(false);
-  const go = async () => {
-    sL(true); sE("");
-    const passActual = await fbGetPassword();
-    if (u === ADMIN_USER && p === passActual) { onLogin(); }
-    else { sE("Usuario o contraseña incorrectos"); }
-    sL(false);
-  };
+   
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8"><div className="text-6xl mb-3">🐄</div><h1 className="text-3xl font-black text-white">GanaBov Pro</h1><p className="text-zinc-500 text-sm mt-1">Santa Cruz · Bolivia · Engorde bovino</p></div>
         <Card className="flex flex-col gap-4">
-          <Inp label="Usuario" value={u} onChange={e => sU(e.target.value)} placeholder="ganadero" />
+          <Inp label="Correo" value={u} onChange={e => sU(e.target.value)} placeholder="correo@gmail.com" />
           <Inp label="Contraseña" type="password" value={p} onChange={e => sP(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && go()} />
           {err && <p className="text-red-400 text-xs text-center">{err}</p>}
           <Btn onClick={go} disabled={loading} className="w-full py-3 text-base">{loading ? "Verificando..." : "Ingresar"}</Btn>
@@ -321,6 +315,32 @@ function LoginScreen({ onLogin }) {
 function CambiarPassword({ onBack }) {
   const [actual, sA] = useState(""); const [nueva, sN] = useState(""); const [conf, sC] = useState("");
   const [err, sE] = useState(""); const [ok, sOk] = useState(false); const [loading, sL] = useState(false);
+  const [u, sU] = useState(""); 
+const [p, sP] = useState(""); 
+const [err, sE] = useState(""); 
+const [loading, sL] = useState(false);
+
+const go = async () => {
+  sL(true);
+  sE("");
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, u, p);
+
+    if (userCredential.user.email === ADMIN_EMAIL) {
+      onLogin(userCredential.user);
+    } else {
+      onLogin(userCredential.user);
+    }
+
+  } catch (error) {
+    sE("Correo o contraseña incorrectos");
+  }
+
+  sL(false);
+};
+
+return (
   const cambiar = async () => {
     sE(""); sL(true);
     const passActual = await fbGetPassword();
