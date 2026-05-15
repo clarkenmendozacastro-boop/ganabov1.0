@@ -15,89 +15,153 @@ import {
 } from "firebase/auth";
 
 // ============================================================
-// ADMIN — poné tu correo acá
+// ADMIN
 // ============================================================
 const ADMIN_EMAIL = "ganabovProappcuenta@gmail.com";
 
 // ============================================================
-// RUTAS DE FIRESTORE POR USUARIO
+// RUTAS FIRESTORE
 // ============================================================
 const userCol = (uid, col) => collection(db, "users", uid, col);
 const userDoc = (uid, col, id) => doc(db, "users", uid, col, id);
 
 // ============================================================
-// ALIMENTOS BASE (Morrison + Tropicales Bolivia)
+// SISTEMAS DE PRODUCCIÓN (Nuevo)
+// ============================================================
+const SISTEMAS = {
+  extensivo: { 
+    nombre: "🌾 Extensivo (pastoreo)",
+    forraje: [85, 100], 
+    concentrado: [0, 15], 
+    ms: [2.0, 2.2],    // % del peso vivo
+    gdp: "0.3 - 0.7 kg/día",
+    desc: "Alta fibra, bajo costo"
+  },
+  semiIntensivo: { 
+    nombre: "⚡ Semi-intensivo",
+    forraje: [60, 75], 
+    concentrado: [25, 40], 
+    ms: [2.2, 2.7], 
+    gdp: "0.8 - 1.3 kg/día",
+    desc: "Balanceado, crecimiento óptimo"
+  },
+  intensivo: { 
+    nombre: "🔥 Intensivo (feedlot)",
+    forraje: [15, 35], 
+    concentrado: [65, 85], 
+    ms: [2.5, 3.0], 
+    gdp: "1.4 - 2.0 kg/día",
+    desc: "Alta ganancia, máximo concentrado"
+  }
+};
+
+// ============================================================
+// ALIMENTOS BASE (ampliado a más de 80 opciones)
 // ============================================================
 const ALIMENTOS_BASE = [
-  { id:"mombasa",        nombre:"Pasto Mombasa (fresco)",           tipo:"forraje_fresco",  ms:22, prot:8.5,  em:2.10, fdn:68, max_ms_pct:null, precio_kg:0.50 },
-  { id:"marandu",        nombre:"Brachiaria Marandu (fresco)",      tipo:"forraje_fresco",  ms:25, prot:8.0,  em:2.05, fdn:70, max_ms_pct:null, precio_kg:0.45 },
-  { id:"brachiaria",     nombre:"Brachiaria brizantha (fresco)",    tipo:"forraje_fresco",  ms:24, prot:7.8,  em:2.00, fdn:72, max_ms_pct:null, precio_kg:0.45 },
-  { id:"tanzania",       nombre:"Pasto Tanzania (fresco)",          tipo:"forraje_fresco",  ms:21, prot:9.2,  em:2.12, fdn:67, max_ms_pct:null, precio_kg:0.50 },
-  { id:"xaraes",         nombre:"Brachiaria Xaraés (fresco)",       tipo:"forraje_fresco",  ms:23, prot:8.3,  em:2.08, fdn:71, max_ms_pct:null, precio_kg:0.45 },
-  { id:"estrella",       nombre:"Pasto Estrella Africana (fresco)", tipo:"forraje_fresco",  ms:20, prot:9.0,  em:2.15, fdn:65, max_ms_pct:null, precio_kg:0.50 },
-  { id:"maralfalfa",     nombre:"Maralfalfa (fresco)",              tipo:"forraje_fresco",  ms:18, prot:11.5, em:2.20, fdn:60, max_ms_pct:null, precio_kg:0.60 },
-  { id:"king_grass",     nombre:"King Grass (fresco)",              tipo:"forraje_fresco",  ms:19, prot:8.8,  em:2.05, fdn:68, max_ms_pct:null, precio_kg:0.45 },
-  { id:"pennisetum",     nombre:"Pennisetum purpureum (fresco)",    tipo:"forraje_fresco",  ms:20, prot:9.5,  em:2.18, fdn:64, max_ms_pct:null, precio_kg:0.50 },
-  { id:"sorgo_forr",     nombre:"Sorgo Forrajero (fresco)",         tipo:"forraje_fresco",  ms:23, prot:7.5,  em:2.10, fdn:66, max_ms_pct:null, precio_kg:0.40 },
-  { id:"caña_verde",     nombre:"Caña de Azúcar (fresca)",          tipo:"forraje_fresco",  ms:26, prot:2.8,  em:2.50, fdn:55, max_ms_pct:null, precio_kg:0.25 },
-  { id:"alfalfa_verde",  nombre:"Alfalfa (fresca)",                 tipo:"forraje_fresco",  ms:23, prot:18.0, em:2.40, fdn:42, max_ms_pct:null, precio_kg:0.80 },
-  { id:"heno_marandu",   nombre:"Heno de Marandu",                  tipo:"heno_silo",       ms:88, prot:6.5,  em:1.90, fdn:74, max_ms_pct:60,   precio_kg:1.20 },
-  { id:"heno_estrella",  nombre:"Heno de Estrella",                 tipo:"heno_silo",       ms:88, prot:7.0,  em:1.95, fdn:72, max_ms_pct:60,   precio_kg:1.30 },
-  { id:"heno_alfalfa",   nombre:"Heno de Alfalfa",                  tipo:"heno_silo",       ms:90, prot:17.0, em:2.20, fdn:44, max_ms_pct:50,   precio_kg:2.50 },
-  { id:"silo_maiz",      nombre:"Silaje de Maíz",                   tipo:"heno_silo",       ms:33, prot:8.0,  em:2.70, fdn:48, max_ms_pct:60,   precio_kg:0.80 },
-  { id:"silo_sorgo",     nombre:"Silaje de Sorgo",                  tipo:"heno_silo",       ms:30, prot:7.5,  em:2.50, fdn:55, max_ms_pct:60,   precio_kg:0.70 },
-  { id:"silo_brachiaria",nombre:"Silaje de Brachiaria",             tipo:"heno_silo",       ms:30, prot:7.0,  em:1.95, fdn:68, max_ms_pct:60,   precio_kg:0.65 },
-  { id:"bagazo_caña",    nombre:"Bagazo de Caña (seco)",            tipo:"heno_silo",       ms:91, prot:2.5,  em:1.55, fdn:85, max_ms_pct:20,   precio_kg:0.20 },
-  { id:"maiz_am",        nombre:"Maíz Amarillo (grano)",            tipo:"energetico",      ms:88, prot:8.5,  em:3.30, fdn:12, max_ms_pct:40,   precio_kg:2.20 },
-  { id:"maiz_bl",        nombre:"Maíz Blanco (grano)",              tipo:"energetico",      ms:88, prot:8.2,  em:3.28, fdn:12, max_ms_pct:40,   precio_kg:2.10 },
-  { id:"sorgo_rojo",     nombre:"Sorgo Rojo (grano)",               tipo:"energetico",      ms:88, prot:9.0,  em:3.10, fdn:14, max_ms_pct:40,   precio_kg:1.90 },
-  { id:"sorgo_blanco",   nombre:"Sorgo Blanco (grano)",             tipo:"energetico",      ms:88, prot:8.8,  em:3.12, fdn:14, max_ms_pct:40,   precio_kg:1.85 },
-  { id:"cebada_grano",   nombre:"Cebada (grano)",                   tipo:"energetico",      ms:88, prot:11.5, em:3.05, fdn:18, max_ms_pct:30,   precio_kg:2.50 },
-  { id:"trigo_grano",    nombre:"Trigo (grano)",                    tipo:"energetico",      ms:88, prot:12.5, em:3.20, fdn:13, max_ms_pct:30,   precio_kg:2.80 },
-  { id:"yuca_seca",      nombre:"Yuca Seca (chips)",                tipo:"energetico",      ms:88, prot:2.8,  em:3.10, fdn:10, max_ms_pct:30,   precio_kg:1.50 },
-  { id:"yuca_fresca",    nombre:"Yuca Raíz (fresca)",               tipo:"energetico",      ms:35, prot:2.5,  em:3.00, fdn:10, max_ms_pct:30,   precio_kg:0.90 },
-  { id:"melaza",         nombre:"Melaza de Caña",                   tipo:"energetico",      ms:74, prot:3.5,  em:2.60, fdn:0,  max_ms_pct:10,   precio_kg:1.20 },
-  { id:"grasa_bypass",   nombre:"Grasa Bypass",                     tipo:"energetico",      ms:99, prot:0.0,  em:5.60, fdn:0,  max_ms_pct:5,    precio_kg:12.0 },
-  { id:"salvado_trigo",  nombre:"Salvado / Afrechillo de Trigo",    tipo:"subproducto",     ms:88, prot:15.0, em:2.80, fdn:42, max_ms_pct:20,   precio_kg:1.80 },
-  { id:"cascara_soya",   nombre:"Cascarilla de Soya",               tipo:"subproducto",     ms:90, prot:12.0, em:2.50, fdn:62, max_ms_pct:20,   precio_kg:2.00 },
-  { id:"pulpa_citrico",  nombre:"Pulpa de Cítricos (seca)",         tipo:"subproducto",     ms:91, prot:6.5,  em:2.80, fdn:22, max_ms_pct:15,   precio_kg:2.20 },
-  { id:"pulpa_remola",   nombre:"Pulpa de Remolacha",               tipo:"subproducto",     ms:91, prot:9.0,  em:2.90, fdn:45, max_ms_pct:15,   precio_kg:2.50 },
-  { id:"afrecho_arroz",  nombre:"Afrecho de Arroz Integral",        tipo:"subproducto",     ms:90, prot:12.5, em:2.70, fdn:28, max_ms_pct:15,   precio_kg:1.60 },
-  { id:"germen_maiz",    nombre:"Germen de Maíz",                   tipo:"subproducto",     ms:90, prot:10.0, em:3.00, fdn:15, max_ms_pct:15,   precio_kg:1.70 },
-  { id:"torta_soya44",   nombre:"Torta de Soya (44% PB)",           tipo:"proteico",        ms:88, prot:44.0, em:3.20, fdn:10, max_ms_pct:15,   precio_kg:4.50 },
-  { id:"torta_soya48",   nombre:"Torta de Soya (48% PB)",           tipo:"proteico",        ms:88, prot:48.0, em:3.10, fdn:8,  max_ms_pct:15,   precio_kg:5.00 },
-  { id:"torta_algod",    nombre:"Torta de Algodón",                 tipo:"proteico",        ms:90, prot:36.0, em:2.70, fdn:25, max_ms_pct:10,   precio_kg:3.50 },
-  { id:"torta_girasol",  nombre:"Torta de Girasol",                 tipo:"proteico",        ms:90, prot:32.0, em:2.60, fdn:30, max_ms_pct:10,   precio_kg:3.20 },
-  { id:"torta_palmiste", nombre:"Torta de Palmiste",                tipo:"proteico",        ms:90, prot:16.0, em:2.70, fdn:55, max_ms_pct:10,   precio_kg:2.80 },
-  { id:"torta_copra",    nombre:"Torta de Copra (coco)",            tipo:"proteico",        ms:90, prot:21.0, em:2.80, fdn:50, max_ms_pct:10,   precio_kg:3.00 },
-  { id:"soya_integral",  nombre:"Soya Integral Tostada",            tipo:"proteico",        ms:90, prot:38.0, em:3.80, fdn:12, max_ms_pct:10,   precio_kg:4.80 },
-  { id:"h_sangre",       nombre:"Harina de Sangre",                 tipo:"proteico_animal", ms:92, prot:80.0, em:2.90, fdn:0,  max_ms_pct:3,    precio_kg:9.00 },
-  { id:"h_carne",        nombre:"Harina de Carne y Hueso",          tipo:"proteico_animal", ms:92, prot:50.0, em:2.80, fdn:0,  max_ms_pct:5,    precio_kg:7.00 },
-  { id:"h_pescado",      nombre:"Harina de Pescado (65% PB)",       tipo:"proteico_animal", ms:92, prot:65.0, em:3.10, fdn:0,  max_ms_pct:5,    precio_kg:10.0 },
-  { id:"h_plumas",       nombre:"Harina de Plumas Hidrolizada",     tipo:"proteico_animal", ms:93, prot:75.0, em:2.60, fdn:0,  max_ms_pct:3,    precio_kg:6.50 },
-  { id:"h_hueso",        nombre:"Harina de Hueso",                  tipo:"proteico_animal", ms:96, prot:12.0, em:0.00, fdn:0,  max_ms_pct:2,    precio_kg:3.50 },
-  { id:"gallinaza",      nombre:"Gallinaza Tratada",                tipo:"proteico_animal", ms:88, prot:28.0, em:1.80, fdn:15, max_ms_pct:5,    precio_kg:0.80 },
-  { id:"pollinaza",      nombre:"Pollinaza (cama de pollo)",        tipo:"proteico_animal", ms:86, prot:30.0, em:1.85, fdn:20, max_ms_pct:5,    precio_kg:0.70 },
-  { id:"sal_mineral",    nombre:"Sal Mineral Completa",             tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:1,    precio_kg:6.50 },
-  { id:"sal_comun",      nombre:"Sal Común (NaCl)",                 tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.5,  precio_kg:1.50 },
-  { id:"bicarbonato",    nombre:"Bicarbonato de Sodio (buffer)",    tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.5,  precio_kg:4.00 },
-  { id:"oxido_mg",       nombre:"Óxido de Magnesio",                tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.3,  precio_kg:8.00 },
-  { id:"urea",           nombre:"Urea Ganadera (46% N)",            tipo:"suplemento",      ms:99, prot:281.0,em:0.00, fdn:0,  max_ms_pct:0.5,  precio_kg:8.00 },
-  { id:"monensina",      nombre:"Monensina (ionóforo)",             tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.02, precio_kg:80.0 },
-  { id:"fosfato_bic",    nombre:"Fosfato Bicálcico",                tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.5,  precio_kg:5.00 },
-  { id:"carbonato_ca",   nombre:"Carbonato de Calcio",              tipo:"suplemento",      ms:99, prot:0.0,  em:0.00, fdn:0,  max_ms_pct:0.5,  precio_kg:2.50 },
+  // Forrajes frescos (18)
+  { id:"mombasa", nombre:"Pasto Mombasa (fresco)", tipo:"forraje_fresco", ms:22, prot:8.5, em:2.10, fdn:68, max_ms_pct:null, precio_kg:0.50 },
+  { id:"marandu", nombre:"Brachiaria Marandu (fresco)", tipo:"forraje_fresco", ms:25, prot:8.0, em:2.05, fdn:70, max_ms_pct:null, precio_kg:0.45 },
+  { id:"brachiaria", nombre:"Brachiaria brizantha (fresco)", tipo:"forraje_fresco", ms:24, prot:7.8, em:2.00, fdn:72, max_ms_pct:null, precio_kg:0.45 },
+  { id:"tanzania", nombre:"Pasto Tanzania (fresco)", tipo:"forraje_fresco", ms:21, prot:9.2, em:2.12, fdn:67, max_ms_pct:null, precio_kg:0.50 },
+  { id:"xaraes", nombre:"Brachiaria Xaraés (fresco)", tipo:"forraje_fresco", ms:23, prot:8.3, em:2.08, fdn:71, max_ms_pct:null, precio_kg:0.45 },
+  { id:"estrella", nombre:"Pasto Estrella Africana (fresco)", tipo:"forraje_fresco", ms:20, prot:9.0, em:2.15, fdn:65, max_ms_pct:null, precio_kg:0.50 },
+  { id:"maralfalfa", nombre:"Maralfalfa (fresco)", tipo:"forraje_fresco", ms:18, prot:11.5, em:2.20, fdn:60, max_ms_pct:null, precio_kg:0.60 },
+  { id:"king_grass", nombre:"King Grass (fresco)", tipo:"forraje_fresco", ms:19, prot:8.8, em:2.05, fdn:68, max_ms_pct:null, precio_kg:0.45 },
+  { id:"pennisetum", nombre:"Pennisetum purpureum (fresco)", tipo:"forraje_fresco", ms:20, prot:9.5, em:2.18, fdn:64, max_ms_pct:null, precio_kg:0.50 },
+  { id:"sorgo_forr", nombre:"Sorgo Forrajero (fresco)", tipo:"forraje_fresco", ms:23, prot:7.5, em:2.10, fdn:66, max_ms_pct:null, precio_kg:0.40 },
+  { id:"caña_verde", nombre:"Caña de Azúcar (fresca)", tipo:"forraje_fresco", ms:26, prot:2.8, em:2.50, fdn:55, max_ms_pct:null, precio_kg:0.25 },
+  { id:"alfalfa_verde", nombre:"Alfalfa (fresca)", tipo:"forraje_fresco", ms:23, prot:18.0, em:2.40, fdn:42, max_ms_pct:null, precio_kg:0.80 },
+  { id:"pasto_bermuda", nombre:"Pasto Bermuda (fresco)", tipo:"forraje_fresco", ms:28, prot:7.0, em:1.95, fdn:72, max_ms_pct:null, precio_kg:0.40 },
+  { id:"pasto_rhodes", nombre:"Pasto Rhodes (fresco)", tipo:"forraje_fresco", ms:22, prot:8.0, em:2.00, fdn:70, max_ms_pct:null, precio_kg:0.45 },
+  { id:"pasto_guinea", nombre:"Pasto Guinea (fresco)", tipo:"forraje_fresco", ms:21, prot:9.0, em:2.10, fdn:66, max_ms_pct:null, precio_kg:0.50 },
+  { id:"avena_forr", nombre:"Avena Forrajera (fresco)", tipo:"forraje_fresco", ms:24, prot:10.0, em:2.25, fdn:58, max_ms_pct:null, precio_kg:0.55 },
+  { id:"ryegrass", nombre:"Ryegrass (fresco)", tipo:"forraje_fresco", ms:18, prot:12.0, em:2.30, fdn:54, max_ms_pct:null, precio_kg:0.70 },
+  { id:"trigo_forr", nombre:"Trigo Forrajero (fresco)", tipo:"forraje_fresco", ms:26, prot:8.5, em:2.15, fdn:62, max_ms_pct:null, precio_kg:0.45 },
+  
+  // Henos y silajes (12)
+  { id:"heno_marandu", nombre:"Heno de Marandu", tipo:"heno_silo", ms:88, prot:6.5, em:1.90, fdn:74, max_ms_pct:60, precio_kg:1.20 },
+  { id:"heno_estrella", nombre:"Heno de Estrella", tipo:"heno_silo", ms:88, prot:7.0, em:1.95, fdn:72, max_ms_pct:60, precio_kg:1.30 },
+  { id:"heno_alfalfa", nombre:"Heno de Alfalfa", tipo:"heno_silo", ms:90, prot:17.0, em:2.20, fdn:44, max_ms_pct:50, precio_kg:2.50 },
+  { id:"silo_maiz", nombre:"Silaje de Maíz", tipo:"heno_silo", ms:33, prot:8.0, em:2.70, fdn:48, max_ms_pct:60, precio_kg:0.80 },
+  { id:"silo_sorgo", nombre:"Silaje de Sorgo", tipo:"heno_silo", ms:30, prot:7.5, em:2.50, fdn:55, max_ms_pct:60, precio_kg:0.70 },
+  { id:"silo_brachiaria", nombre:"Silaje de Brachiaria", tipo:"heno_silo", ms:30, prot:7.0, em:1.95, fdn:68, max_ms_pct:60, precio_kg:0.65 },
+  { id:"silo_avena", nombre:"Silaje de Avena", tipo:"heno_silo", ms:32, prot:9.0, em:2.40, fdn:58, max_ms_pct:60, precio_kg:0.85 },
+  { id:"heno_bermuda", nombre:"Heno de Bermuda", tipo:"heno_silo", ms:89, prot:6.0, em:1.85, fdn:73, max_ms_pct:60, precio_kg:1.10 },
+  { id:"heno_rhodes", nombre:"Heno de Rhodes", tipo:"heno_silo", ms:88, prot:7.0, em:1.90, fdn:71, max_ms_pct:60, precio_kg:1.15 },
+  { id:"silo_pasto", nombre:"Silaje de Pasto Guinea", tipo:"heno_silo", ms:28, prot:7.5, em:2.00, fdn:67, max_ms_pct:60, precio_kg:0.70 },
+  { id:"silo_king", nombre:"Silaje de King Grass", tipo:"heno_silo", ms:29, prot:8.0, em:2.05, fdn:65, max_ms_pct:60, precio_kg:0.75 },
+  { id:"bagazo_caña", nombre:"Bagazo de Caña (seco)", tipo:"heno_silo", ms:91, prot:2.5, em:1.55, fdn:85, max_ms_pct:20, precio_kg:0.20 },
+  
+  // Energéticos (15)
+  { id:"maiz_am", nombre:"Maíz Amarillo (grano)", tipo:"energetico", ms:88, prot:8.5, em:3.30, fdn:12, max_ms_pct:40, precio_kg:2.20 },
+  { id:"maiz_bl", nombre:"Maíz Blanco (grano)", tipo:"energetico", ms:88, prot:8.2, em:3.28, fdn:12, max_ms_pct:40, precio_kg:2.10 },
+  { id:"sorgo_rojo", nombre:"Sorgo Rojo (grano)", tipo:"energetico", ms:88, prot:9.0, em:3.10, fdn:14, max_ms_pct:40, precio_kg:1.90 },
+  { id:"sorgo_blanco", nombre:"Sorgo Blanco (grano)", tipo:"energetico", ms:88, prot:8.8, em:3.12, fdn:14, max_ms_pct:40, precio_kg:1.85 },
+  { id:"cebada_grano", nombre:"Cebada (grano)", tipo:"energetico", ms:88, prot:11.5, em:3.05, fdn:18, max_ms_pct:30, precio_kg:2.50 },
+  { id:"trigo_grano", nombre:"Trigo (grano)", tipo:"energetico", ms:88, prot:12.5, em:3.20, fdn:13, max_ms_pct:30, precio_kg:2.80 },
+  { id:"yuca_seca", nombre:"Yuca Seca (chips)", tipo:"energetico", ms:88, prot:2.8, em:3.10, fdn:10, max_ms_pct:30, precio_kg:1.50 },
+  { id:"yuca_fresca", nombre:"Yuca Raíz (fresca)", tipo:"energetico", ms:35, prot:2.5, em:3.00, fdn:10, max_ms_pct:30, precio_kg:0.90 },
+  { id:"melaza", nombre:"Melaza de Caña", tipo:"energetico", ms:74, prot:3.5, em:2.60, fdn:0, max_ms_pct:10, precio_kg:1.20 },
+  { id:"grasa_bypass", nombre:"Grasa Bypass", tipo:"energetico", ms:99, prot:0.0, em:5.60, fdn:0, max_ms_pct:5, precio_kg:12.0 },
+  { id:"arroz_pulido", nombre:"Arroz Pulido (quebrado)", tipo:"energetico", ms:88, prot:7.0, em:3.25, fdn:10, max_ms_pct:40, precio_kg:2.30 },
+  { id:"cana_miel", nombre:"Cachaza (melaza residual)", tipo:"energetico", ms:70, prot:4.0, em:2.55, fdn:5, max_ms_pct:15, precio_kg:0.90 },
+  { id:"maiz_flor", nombre:"Maíz Flor (descarte)", tipo:"energetico", ms:86, prot:7.5, em:3.10, fdn:15, max_ms_pct:35, precio_kg:1.80 },
+  { id:"sorgo_harinoso", nombre:"Sorgo Harinoso", tipo:"energetico", ms:87, prot:8.0, em:3.00, fdn:16, max_ms_pct:40, precio_kg:1.70 },
+  { id:"trigo_harina", nombre:"Harina de Trigo (alimento)", tipo:"energetico", ms:89, prot:11.0, em:3.15, fdn:14, max_ms_pct:30, precio_kg:2.40 },
+  
+  // Subproductos (10)
+  { id:"salvado_trigo", nombre:"Salvado / Afrechillo de Trigo", tipo:"subproducto", ms:88, prot:15.0, em:2.80, fdn:42, max_ms_pct:20, precio_kg:1.80 },
+  { id:"cascara_soya", nombre:"Cascarilla de Soya", tipo:"subproducto", ms:90, prot:12.0, em:2.50, fdn:62, max_ms_pct:20, precio_kg:2.00 },
+  { id:"pulpa_citrico", nombre:"Pulpa de Cítricos (seca)", tipo:"subproducto", ms:91, prot:6.5, em:2.80, fdn:22, max_ms_pct:15, precio_kg:2.20 },
+  { id:"pulpa_remola", nombre:"Pulpa de Remolacha", tipo:"subproducto", ms:91, prot:9.0, em:2.90, fdn:45, max_ms_pct:15, precio_kg:2.50 },
+  { id:"afrecho_arroz", nombre:"Afrecho de Arroz Integral", tipo:"subproducto", ms:90, prot:12.5, em:2.70, fdn:28, max_ms_pct:15, precio_kg:1.60 },
+  { id:"germen_maiz", nombre:"Germen de Maíz", tipo:"subproducto", ms:90, prot:10.0, em:3.00, fdn:15, max_ms_pct:15, precio_kg:1.70 },
+  { id:"cascara_algodon", nombre:"Cascarilla de Algodón", tipo:"subproducto", ms:92, prot:5.0, em:1.90, fdn:75, max_ms_pct:20, precio_kg:1.20 },
+  { id:"cascara_girasol", nombre:"Cascarilla de Girasol", tipo:"subproducto", ms:90, prot:8.0, em:2.10, fdn:55, max_ms_pct:20, precio_kg:1.30 },
+  { id:"granza_cerveza", nombre:"Granza de Cervecería", tipo:"subproducto", ms:25, prot:18.0, em:2.50, fdn:35, max_ms_pct:15, precio_kg:0.60 },
+  { id:"torta_caña", nombre:"Torta de Caña (bagacillo)", tipo:"subproducto", ms:85, prot:3.0, em:1.70, fdn:78, max_ms_pct:15, precio_kg:0.25 },
+  
+  // Proteicos vegetales y animales (12)
+  { id:"torta_soya44", nombre:"Torta de Soya (44% PB)", tipo:"proteico", ms:88, prot:44.0, em:3.20, fdn:10, max_ms_pct:15, precio_kg:4.50 },
+  { id:"torta_soya48", nombre:"Torta de Soya (48% PB)", tipo:"proteico", ms:88, prot:48.0, em:3.10, fdn:8, max_ms_pct:15, precio_kg:5.00 },
+  { id:"torta_algod", nombre:"Torta de Algodón", tipo:"proteico", ms:90, prot:36.0, em:2.70, fdn:25, max_ms_pct:10, precio_kg:3.50 },
+  { id:"torta_girasol", nombre:"Torta de Girasol", tipo:"proteico", ms:90, prot:32.0, em:2.60, fdn:30, max_ms_pct:10, precio_kg:3.20 },
+  { id:"torta_palmiste", nombre:"Torta de Palmiste", tipo:"proteico", ms:90, prot:16.0, em:2.70, fdn:55, max_ms_pct:10, precio_kg:2.80 },
+  { id:"torta_copra", nombre:"Torta de Copra (coco)", tipo:"proteico", ms:90, prot:21.0, em:2.80, fdn:50, max_ms_pct:10, precio_kg:3.00 },
+  { id:"soya_integral", nombre:"Soya Integral Tostada", tipo:"proteico", ms:90, prot:38.0, em:3.80, fdn:12, max_ms_pct:10, precio_kg:4.80 },
+  { id:"h_sangre", nombre:"Harina de Sangre", tipo:"proteico_animal", ms:92, prot:80.0, em:2.90, fdn:0, max_ms_pct:3, precio_kg:9.00 },
+  { id:"h_carne", nombre:"Harina de Carne y Hueso", tipo:"proteico_animal", ms:92, prot:50.0, em:2.80, fdn:0, max_ms_pct:5, precio_kg:7.00 },
+  { id:"h_pescado", nombre:"Harina de Pescado (65% PB)", tipo:"proteico_animal", ms:92, prot:65.0, em:3.10, fdn:0, max_ms_pct:5, precio_kg:10.0 },
+  { id:"h_plumas", nombre:"Harina de Plumas Hidrolizada", tipo:"proteico_animal", ms:93, prot:75.0, em:2.60, fdn:0, max_ms_pct:3, precio_kg:6.50 },
+  { id:"h_hueso", nombre:"Harina de Hueso", tipo:"proteico_animal", ms:96, prot:12.0, em:0.00, fdn:0, max_ms_pct:2, precio_kg:3.50 },
+  { id:"gallinaza", nombre:"Gallinaza Tratada", tipo:"proteico_animal", ms:88, prot:28.0, em:1.80, fdn:15, max_ms_pct:5, precio_kg:0.80 },
+  { id:"pollinaza", nombre:"Pollinaza (cama de pollo)", tipo:"proteico_animal", ms:86, prot:30.0, em:1.85, fdn:20, max_ms_pct:5, precio_kg:0.70 },
+  
+  // Suplementos (11)
+  { id:"sal_mineral", nombre:"Sal Mineral Completa", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:1, precio_kg:6.50 },
+  { id:"sal_comun", nombre:"Sal Común (NaCl)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:1.50 },
+  { id:"bicarbonato", nombre:"Bicarbonato de Sodio (buffer)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:4.00 },
+  { id:"oxido_mg", nombre:"Óxido de Magnesio", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.3, precio_kg:8.00 },
+  { id:"urea", nombre:"Urea Ganadera (46% N)", tipo:"suplemento", ms:99, prot:281.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:8.00 },
+  { id:"monensina", nombre:"Monensina (ionóforo)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.02, precio_kg:80.0 },
+  { id:"fosfato_bic", nombre:"Fosfato Bicálcico", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:5.00 },
+  { id:"carbonato_ca", nombre:"Carbonato de Calcio", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:2.50 },
+  { id:"zeolita", nombre:"Zeolita (adsorbente)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:1, precio_kg:2.00 },
+  { id:"lecitina_soya", nombre:"Lectina de Soya (emulsificante)", tipo:"suplemento", ms:95, prot:0.0, em:4.50, fdn:0, max_ms_pct:0.5, precio_kg:18.0 },
+  { id:"propanodiol", nombre:"Propilenglicol", tipo:"suplemento", ms:100, prot:0.0, em:3.50, fdn:0, max_ms_pct:0.3, precio_kg:15.0 }
 ];
 
 const RAZAS = [
-  { id:"nelore",         nombre:"Nelore",                   gdp_base:0.90, pc_canal:0.54, ajuste_ms:0.025 },
-  { id:"brahman",        nombre:"Brahman",                  gdp_base:0.85, pc_canal:0.53, ajuste_ms:0.025 },
-  { id:"nelore_brahman", nombre:"Cruce Nelore × Brahman",   gdp_base:0.95, pc_canal:0.55, ajuste_ms:0.026 },
-  { id:"angus_brahman",  nombre:"Cruce Angus × Brahman",    gdp_base:1.00, pc_canal:0.56, ajuste_ms:0.027 },
-  { id:"senepol",        nombre:"Senepol",                  gdp_base:0.88, pc_canal:0.54, ajuste_ms:0.025 },
-  { id:"simmental",      nombre:"Cruce Simmental",          gdp_base:1.05, pc_canal:0.57, ajuste_ms:0.027 },
-  { id:"criollo",        nombre:"Criollo Boliviano",        gdp_base:0.55, pc_canal:0.50, ajuste_ms:0.022 },
-  { id:"criollo_cruce",  nombre:"Criollo con cruce cebuíno",gdp_base:0.70, pc_canal:0.51, ajuste_ms:0.023 },
-  { id:"otro",           nombre:"Otro / No definido",       gdp_base:0.78, pc_canal:0.52, ajuste_ms:0.024 },
+  { id:"nelore", nombre:"Nelore", gdp_base:0.90, pc_canal:0.54, ajuste_ms:0.025 },
+  { id:"brahman", nombre:"Brahman", gdp_base:0.85, pc_canal:0.53, ajuste_ms:0.025 },
+  { id:"nelore_brahman", nombre:"Cruce Nelore × Brahman", gdp_base:0.95, pc_canal:0.55, ajuste_ms:0.026 },
+  { id:"angus_brahman", nombre:"Cruce Angus × Brahman", gdp_base:1.00, pc_canal:0.56, ajuste_ms:0.027 },
+  { id:"senepol", nombre:"Senepol", gdp_base:0.88, pc_canal:0.54, ajuste_ms:0.025 },
+  { id:"simmental", nombre:"Cruce Simmental", gdp_base:1.05, pc_canal:0.57, ajuste_ms:0.027 },
+  { id:"criollo", nombre:"Criollo Boliviano", gdp_base:0.55, pc_canal:0.50, ajuste_ms:0.022 },
+  { id:"criollo_cruce", nombre:"Criollo con cruce cebuíno", gdp_base:0.70, pc_canal:0.51, ajuste_ms:0.023 },
+  { id:"otro", nombre:"Otro / No definido", gdp_base:0.78, pc_canal:0.52, ajuste_ms:0.024 },
 ];
 
 const TIPO_LABELS = {
@@ -109,12 +173,20 @@ const TIPO_LABELS = {
 const TIPOS_ORDER = ["forraje_fresco","heno_silo","energetico","subproducto","proteico","proteico_animal","suplemento"];
 
 // ============================================================
-// MOTOR NUTRICIONAL MEJORADO CON MÍNIMOS PRÁCTICOS Y PERSONALIZABLES
+// MOTOR NUTRICIONAL ACTUALIZADO CON SISTEMAS
 // ============================================================
-function calcularRequerimientos(pv, razaObj) {
+function calcularRequerimientos(pv, razaObj, sistemaId) {
   const pvN = parseFloat(pv);
   if (!pvN || pvN < 80) return null;
-  const gdp = razaObj ? razaObj.gdp_base : 0.78;
+  const gdpBase = razaObj ? razaObj.gdp_base : 0.78;
+  // Ajuste según sistema (el sistema define un rango, tomamos el promedio para el cálculo energético)
+  const sistema = SISTEMAS[sistemaId];
+  const msPctPromedio = (sistema.ms[0] + sistema.ms[1]) / 2 / 100;
+  const ms_opt = pvN * msPctPromedio;
+  const ms_min = pvN * (sistema.ms[0]/100);
+  const ms_max = pvN * (sistema.ms[1]/100);
+  // Usamos el GDP base de la raza, pero limitado por el sistema (el sistema muestra un rango, pero no forzamos)
+  const gdp = gdpBase;
   const pvMet = Math.pow(pvN, 0.75);
   const em_mant = 0.077 * pvMet * 1.10;
   const em_crec = gdp * (0.0635 * Math.pow(pvN, 0.6) + 4.1 * gdp);
@@ -122,32 +194,21 @@ function calcularRequerimientos(pv, razaObj) {
   const prot_mant = 3.8 * pvMet;
   const prot_crec = gdp * 268 - 29.4 * (em_crec / gdp);
   const pb_total = (prot_mant + prot_crec) / 0.65;
-  return { em_total, pb_total, ms_min: pvN*0.020, ms_opt: pvN*(razaObj?razaObj.ajuste_ms:0.024), ms_max: pvN*0.030, gdp, pvN };
+  return { em_total, pb_total, ms_min, ms_opt, ms_max, gdp, pvN, sistemaId };
 }
 
-function pearsonSquare(prot_obj, pE, pP) {
-  if (pP <= prot_obj || prot_obj <= pE) return null;
-  const partE = pP - prot_obj;
-  const partP = prot_obj - pE;
-  const tot = partE + partP;
-  return { pct_E: partE / tot, pct_P: partP / tot };
-}
-
-// Nueva función que respeta mínimos definidos por usuario (si existen)
-function formularRacion(seleccionados, pv, razaObj, preciosUsr, minsPersonalizados = {}) {
-  const req = calcularRequerimientos(pv, razaObj);
+function formularRacionPorSistema(seleccionados, pv, razaObj, preciosUsr, sistemaId, minsPersonalizados = {}) {
+  const req = calcularRequerimientos(pv, razaObj, sistemaId);
   if (!req || seleccionados.length === 0) return null;
-
+  const sistema = SISTEMAS[sistemaId];
   const getPrecio = al => preciosUsr[al.id] !== undefined ? preciosUsr[al.id] : al.precio_kg;
   const getMinKg = al => minsPersonalizados[al.id] !== undefined ? minsPersonalizados[al.id] : 0;
 
+  // Separar alimentos por tipo
   const byTipo = t => seleccionados.filter(a => a.tipo === t);
-  const ff = byTipo("forraje_fresco");
-  const hs = byTipo("heno_silo");
-  const en = byTipo("energetico");
-  const pr = [...byTipo("proteico"), ...byTipo("proteico_animal")];
-  const sb = byTipo("subproducto");
-  const sup = byTipo("suplemento");
+  let todosForrajes = [...byTipo("forraje_fresco"), ...byTipo("heno_silo")];
+  let concentrados = [...byTipo("energetico"), ...byTipo("proteico"), ...byTipo("proteico_animal"), ...byTipo("subproducto")];
+  const suplementos = byTipo("suplemento");
 
   let racion = [];
   let ms_u = 0, em_u = 0, prot_u = 0, fdn_u = 0;
@@ -155,15 +216,15 @@ function formularRacion(seleccionados, pv, razaObj, preciosUsr, minsPersonalizad
   const add = (al, kg) => {
     if (kg <= 0.001) return;
     const msKg = kg * (al.ms / 100);
-    racion.push({ ...al, kg_dia: +kg.toFixed(2), ms_kg: +msKg.toFixed(3), precio_kg: getPrecio(al) });
+    racion.push({ ...al, kg_dia: +kg.toFixed(3), ms_kg: +msKg.toFixed(3), precio_kg: getPrecio(al) });
     ms_u += msKg;
     em_u += msKg * al.em;
     prot_u += msKg * (al.prot / 100) * 1000;
     fdn_u += msKg * (al.fdn / 100);
   };
 
-  // 1. Suplementos fijos (dosis)
-  sup.forEach(s => {
+  // 1. Suplementos (dosis fijas)
+  suplementos.forEach(s => {
     let kg = 0;
     if (s.id === "sal_mineral") kg = req.pvN * 0.00008;
     else if (s.id === "bicarbonato") kg = 0.1;
@@ -171,127 +232,100 @@ function formularRacion(seleccionados, pv, razaObj, preciosUsr, minsPersonalizad
     else if (s.id === "urea") kg = Math.min(0.05, req.pvN * 0.0001);
     else if (s.id === "monensina") kg = 0.0003;
     else if (s.id === "fosfato_bic") kg = 0.04;
+    else if (s.id === "zeolita") kg = 0.05;
+    else if (s.id === "lecitina_soya") kg = 0.02;
+    else if (s.id === "propanodiol") kg = 0.03;
     else kg = 0.06;
     add(s, kg);
   });
 
-  // 2. Forraje fresco (base)
-  if (ff.length > 0) {
-    let ms_ff = Math.min(req.ms_opt * 0.6, req.ms_opt - ms_u);
-    ms_ff = Math.max(ms_ff, req.pvN * 0.012); // mínimo 1.2% PV
-    ff.forEach(f => add(f, (ms_ff / ff.length) / (f.ms / 100)));
-  }
+  // Determinar MS total objetivo según sistema (promedio del rango)
+  let msObjetivo = req.ms_opt;
+  // Porcentajes de forraje y concentrado según sistema
+  let pctForraje = (sistema.forraje[0] + sistema.forraje[1]) / 2 / 100;
+  let pctConcentrado = (sistema.concentrado[0] + sistema.concentrado[1]) / 2 / 100;
+  
+  let msForraje = msObjetivo * pctForraje;
+  let msConcentrado = msObjetivo * pctConcentrado;
 
-  // 3. Heno / silaje (fibra mínima)
-  if (hs.length > 0) {
-    let ms_hs = Math.max(0, req.ms_opt * 0.4 - ms_u);
-    if (ms_hs < 0.5 && hs.some(h => h.tipo === "heno_silo")) ms_hs = 0.5;
-    if (ms_hs > 0.1) hs.forEach(h => add(h, (ms_hs / hs.length) / (h.ms / 100)));
-  }
-
-  // 4. Aplicar mínimos personalizados a concentrados (energéticos, proteicos, subproductos)
-  const todos_conc = [...en, ...pr, ...sb];
-  let ms_conc_max = Math.max(0, req.ms_max - ms_u);
-  let ms_conc_usado = 0;
-
-  // Primero forzar los mínimos personalizados
-  todos_conc.forEach(al => {
-    const minKg = getMinKg(al);
+  // Aplicar mínimos personalizados a concentrados
+  let msConcUsado = 0;
+  concentrados.forEach(conc => {
+    const minKg = getMinKg(conc);
     if (minKg > 0) {
-      const msMin = minKg * (al.ms / 100);
-      if (msMin <= ms_conc_max - ms_conc_usado) {
-        add(al, minKg);
-        ms_conc_usado += msMin;
+      const msMin = minKg * (conc.ms / 100);
+      if (msMin <= msConcentrado - msConcUsado) {
+        add(conc, minKg);
+        msConcUsado += msMin;
       } else {
-        // Si no cabe el mínimo, agregamos lo que cabe (pero al menos algo)
-        const kgPosible = (ms_conc_max - ms_conc_usado) / (al.ms / 100);
-        if (kgPosible > 0.05) add(al, kgPosible);
-        ms_conc_usado = ms_conc_max;
+        let posible = (msConcentrado - msConcUsado) / (conc.ms / 100);
+        if (posible > 0.05) add(conc, posible);
+        msConcUsado = msConcentrado;
       }
     }
   });
-
-  let ms_restante = ms_conc_max - ms_conc_usado;
-  if (ms_restante <= 0.2) {
-    return buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff);
+  let msConcRestante = msConcentrado - msConcUsado;
+  // Distribuir el resto de concentrados proporcionalmente según energía y proteína (similar a Pearson pero simplificado)
+  if (msConcRestante > 0.05 && concentrados.length) {
+    const concSinMin = concentrados.filter(c => !getMinKg(c));
+    if (concSinMin.length) {
+      const totalPuntaje = concSinMin.reduce((sum, c) => sum + (c.em * 0.6 + (c.prot/100)*0.4), 0);
+      concSinMin.forEach(c => {
+        let punt = (c.em * 0.6 + (c.prot/100)*0.4) / totalPuntaje;
+        let msAl = msConcRestante * punt;
+        if (c.max_ms_pct) msAl = Math.min(msAl, req.ms_max * (c.max_ms_pct/100));
+        if (msAl > 0.05) add(c, msAl / (c.ms / 100));
+      });
+    }
   }
 
-  // 5. Calcular déficit de energía y proteína después de forrajes y mínimos
-  const em_def = Math.max(0, req.em_total - em_u);
-  const prot_def = Math.max(0, req.pb_total - prot_u);
-  const protObjPct = ms_restante > 0 ? (prot_def / 1000 / ms_restante) * 100 : 14;
-  const protObjClamped = Math.min(Math.max(protObjPct, 10), 28);
-
-  // Identificar mejor energético y mejor proteico entre los que no tienen mínimo forzado (o sí, pero ya se asignaron)
-  const enSinMin = en.filter(e => !getMinKg(e));
-  const prSinMin = pr.filter(p => !getMinKg(p));
-  const sbSinMin = sb.filter(s => !getMinKg(s));
-  let mejorE = enSinMin.length ? enSinMin.reduce((a,b)=>a.em>b.em?a:b) : (sbSinMin.length ? sbSinMin.reduce((a,b)=>a.em>b.em?a:b) : null);
-  let mejorP = prSinMin.length ? prSinMin.reduce((a,b)=>a.prot>b.prot?a:b) : (sbSinMin.length ? sbSinMin.reduce((a,b)=>a.prot>b.prot?a:b) : null);
-
-  let fracciones = {};
-  if (mejorE && mejorP && mejorP.prot > protObjClamped && mejorE.prot < protObjClamped) {
-    const ps = pearsonSquare(protObjClamped, mejorE.prot, mejorP.prot);
-    if (ps) {
-      fracciones[mejorE.id] = ps.pct_E;
-      fracciones[mejorP.id] = ps.pct_P;
-      const otros = [...enSinMin, ...prSinMin, ...sbSinMin].filter(a => a.id !== mejorE.id && a.id !== mejorP.id);
-      if (otros.length) {
-        const factorOtros = 0.15;
-        fracciones[mejorE.id] *= (1 - factorOtros);
-        fracciones[mejorP.id] *= (1 - factorOtros);
-        const resto = factorOtros / otros.length;
-        otros.forEach(a => fracciones[a.id] = resto);
+  // Forrajes: distribuir la MS de forraje entre los seleccionados
+  if (todosForrajes.length) {
+    let msForRestante = msForraje;
+    // Aplicar mínimos a forrajes si los tienen
+    todosForrajes.forEach(f => {
+      const minKg = getMinKg(f);
+      if (minKg > 0) {
+        let msMin = minKg * (f.ms/100);
+        if (msMin <= msForRestante) {
+          add(f, minKg);
+          msForRestante -= msMin;
+        } else {
+          add(f, msForRestante / (f.ms/100));
+          msForRestante = 0;
+        }
+      }
+    });
+    if (msForRestante > 0.05 && todosForrajes.length) {
+      const forrajesSinMin = todosForrajes.filter(f => !getMinKg(f));
+      if (forrajesSinMin.length) {
+        const fraccion = msForRestante / forrajesSinMin.length;
+        forrajesSinMin.forEach(f => {
+          add(f, fraccion / (f.ms/100));
+        });
       }
     }
-  } else {
-    const todos = [...enSinMin, ...prSinMin, ...sbSinMin];
-    if (todos.length) {
-      const totalPuntaje = todos.reduce((sum, a) => sum + (a.em * 0.6 + (a.prot/100)*0.4), 0);
-      todos.forEach(a => fracciones[a.id] = (a.em * 0.6 + (a.prot/100)*0.4) / totalPuntaje);
-    }
   }
 
-  // Aplicar fracciones sobre ms_restante
-  todos_conc.forEach(al => {
-    if (getMinKg(al)) return; // ya se asignó su mínimo
-    const frac = fracciones[al.id];
-    if (!frac) return;
-    let ms_al = ms_restante * frac;
-    if (al.max_ms_pct) ms_al = Math.min(ms_al, req.ms_max * (al.max_ms_pct / 100));
-    if (ms_al < 0.05) return;
-    add(al, ms_al / (al.ms / 100));
-  });
-
-  // 6. Ajuste iterativo si aún faltan energía o proteína
-  let iter = 0;
-  while ((req.em_total - em_u > 0.3 || req.pb_total - prot_u > 50) && iter < 3 && ms_u < req.ms_max * 0.98) {
-    iter++;
-    const deficitEM = Math.max(0, req.em_total - em_u);
-    const deficitPB = Math.max(0, req.pb_total - prot_u);
-    const msDisponible = Math.max(0, req.ms_max - ms_u);
-    if (msDisponible < 0.1) break;
-    let refuerzoEn = [...en, ...sb].sort((a,b)=>b.em - a.em)[0];
-    let refuerzoPr = [...pr, ...sb].sort((a,b)=>b.prot - a.prot)[0];
-    if (deficitEM > 0.3 && refuerzoEn && msDisponible > 0.1) {
-      let msExtra = Math.min(deficitEM / refuerzoEn.em, msDisponible);
-      msExtra = Math.max(msExtra, 0.2);
-      add(refuerzoEn, msExtra / (refuerzoEn.ms / 100));
-    }
-    if (deficitPB > 50 && refuerzoPr && msDisponible > 0.1) {
-      let msExtra = Math.min(deficitPB / 1000 / (refuerzoPr.prot/100), msDisponible);
-      msExtra = Math.max(msExtra, 0.1);
-      add(refuerzoPr, msExtra / (refuerzoPr.ms / 100));
-    }
-  }
-
-  return buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff);
-}
-
-function buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff) {
+  // Calcular balances finales
   const fdn_pct = ms_u > 0 ? (fdn_u / ms_u) * 100 : 0;
   const costo = racion.reduce((s, a) => s + a.kg_dia * a.precio_kg, 0);
-  const metodo = "NRC-2000 + Pearson con mínimos prácticos personalizables";
+  
+  // Alertas específicas por sistema y por concentrado
+  let alertas = [];
+  const pctConcReal = (concentrados.reduce((acc, c) => {
+    const item = racion.find(r => r.id === c.id);
+    return acc + (item ? (item.kg_dia * (c.ms/100)) : 0);
+  }, 0) / ms_u) * 100;
+  
+  if (pctConcReal > 85) alertas.push({ tipo: "critico", msg: "⚠️ RIESGO CRÍTICO: Concentrado >85% - Peligro de acidosis ruminal. Aumente la fibra." });
+  if (sistemaId === "semiIntensivo" && pctConcReal > 40) alertas.push({ tipo: "advertencia", msg: "⚠️ El nivel de concentrado excede el estándar para sistema semi-intensivo (>40%)." });
+  if (fdn_pct < 35) alertas.push({ tipo: "critico", msg: "🚨 FDN bajo (<35%) - Riesgo de acidosis. Agregue heno o paja." });
+  if (fdn_pct < 42 && sistemaId !== "intensivo") alertas.push({ tipo: "advertencia", msg: "⚠️ FDN moderado (<42%) - Puede haber problemas de rumia en pastoreo." });
+  
+  const balance_em = (em_u - req.em_total).toFixed(2);
+  const balance_prot = (prot_u - req.pb_total).toFixed(0);
+  
   return {
     racion, req,
     ms_total: ms_u.toFixed(2),
@@ -300,15 +334,16 @@ function buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff) {
     prot_total: prot_u.toFixed(0),
     fdn_pct: fdn_pct.toFixed(1),
     costo_total: costo.toFixed(2),
-    balance_em: (em_u - req.em_total).toFixed(2),
-    balance_prot: (prot_u - req.pb_total).toFixed(0),
-    alertaAcidosis: fdn_pct < 35,
-    alertaPastoFresco: ff.length > 0 && fdn_pct < 42,
-    metodo,
+    balance_em, balance_prot,
+    alertas,
+    sistemaUsado: sistemaId,
+    pctConcReal: pctConcReal.toFixed(1)
   };
 }
 
-// Funciones auxiliares (sin cambios)
+// ============================================================
+// FUNCIONES AUXILIARES (igual que antes)
+// ============================================================
 function calcularGDP(pesadas) {
   if(!pesadas||pesadas.length<2)return 0;
   const p1=pesadas[0],p2=pesadas[pesadas.length-1];
@@ -344,7 +379,7 @@ function recomendarAjuste(gdp,razaObj,esCriollo) {
 }
 
 // ============================================================
-// UI COMPONENTS (sin cambios)
+// COMPONENTES UI (igual que antes)
 // ============================================================
 const Badge=({children,color="green"})=>{
   const c={green:"bg-emerald-900/50 text-emerald-300 border-emerald-700",yellow:"bg-amber-900/50 text-amber-300 border-amber-700",red:"bg-red-900/50 text-red-300 border-red-700",blue:"bg-sky-900/50 text-sky-300 border-sky-700",gray:"bg-zinc-800 text-zinc-400 border-zinc-600",purple:"bg-purple-900/50 text-purple-300 border-purple-700"};
@@ -480,7 +515,7 @@ function Dashboard({animales,onNav,isAdmin}) {
 }
 
 // ============================================================
-// ANIMALES (igual, solo renombro componentes internos)
+// ANIMALES (resumidos por brevedad, igual que antes)
 // ============================================================
 function ListaAnimales({animales,onSelect,onNav}) {
   const AnimalCard = ({animal, onClick}) => {
@@ -488,7 +523,7 @@ function ListaAnimales({animales,onSelect,onNav}) {
     const ult=animal.pesadas?.length>0?animal.pesadas[animal.pesadas.length-1].peso:animal.peso_inicial;
     const gdp=calcularGDP(animal.pesadas);
     const col=animal.pesadas?.length<2?"gray":gdp>=raza.gdp_base*0.85?"green":gdp>=raza.gdp_base*0.60?"yellow":"red";
-    return(<button onClick={onClick} className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 text-left hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all"><div className="flex justify-between items-start mb-3"><div><div className="font-bold text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div><Badge color={col}>{col==="green"?"Bien":col==="yellow"?"Regular":col==="red"?"Alerta":"Sin datos"}</Badge></div><div className="grid grid-cols-3 gap-2 text-center">{{v:`${ult} kg`,l:"actual",c:"text-emerald-400"},{v:`${animal.peso_inicial} kg`,l:"entrada",c:"text-sky-400"},{v:gdp>0?`${gdp.toFixed(2)}/d`:"—",l:"GDP kg",c:"text-amber-400"}.map(s=>(<div key={s.l}><div className={`font-black text-lg ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>))}</div></button>);
+    return(<button onClick={onClick} className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 text-left hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all"><div className="flex justify-between items-start mb-3"><div><div className="font-bold text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div><Badge color={col}>{col==="green"?"Bien":col==="yellow"?"Regular":col==="red"?"Alerta":"Sin datos"}</Badge></div><div className="grid grid-cols-3 gap-2 text-center">{[{v:`${ult} kg`,l:"actual",c:"text-emerald-400"},{v:`${animal.peso_inicial} kg`,l:"entrada",c:"text-sky-400"},{v:gdp>0?`${gdp.toFixed(2)}/d`:"—",l:"GDP kg",c:"text-amber-400"}].map(s=>(<div key={s.l}><div className={`font-black text-lg ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>))}</div></button>);
   };
   return(
     <div className="flex flex-col gap-4">
@@ -544,7 +579,7 @@ function DetalleAnimal({animal,onUpdate,onDelete,onBack,preciosUsr,uid}) {
 }
 
 // ============================================================
-// ALIMENTOS Y PRECIOS (mejorado: permite definir mínimo diario personalizado)
+// GESTIÓN ALIMENTOS (igual que antes con mínimos)
 // ============================================================
 function GestionAlimentos({preciosUsr, onPrecio, customAl, onAddCustom, uid, minsAlimentos, onSetMinimo}) {
   const [busq,sB]=useState(""); const [editId,sEI]=useState(null); const [editVal,sEV]=useState("");
@@ -582,12 +617,13 @@ function GestionAlimentos({preciosUsr, onPrecio, customAl, onAddCustom, uid, min
 }
 
 // ============================================================
-// CALCULADORA DE RACIÓN (actualizada para usar minsPersonalizados)
+// CALCULADORA DE RACIÓN (con selección de sistema)
 // ============================================================
 function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
   const [peso,sP]=useState(""); const [raza,sR]=useState("otro");
+  const [sistema, setSistema] = useState("semiIntensivo");
   const [selIds,sS]=useState(new Set()); const [busq,sB]=useState("");
-  const [resultado,sRes]=useState(null); const [showSel,sSS]=useState(false); const [modo,sM]=useState("formulado");
+  const [resultado,sRes]=useState(null); const [showSel,sSS]=useState(false);
   const todosAl=[...ALIMENTOS_BASE,...customAl];
   const filtrados=todosAl.filter(a=>a.nombre.toLowerCase().includes(busq.toLowerCase())||TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
   const razaObj=RAZAS.find(r=>r.id===raza)||RAZAS[8];
@@ -595,9 +631,9 @@ function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
   const toggle=(id)=>sS(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
   const calcular=()=>{
     if(!peso||parseFloat(peso)<80)return alert("Peso mínimo 80 kg");
-    if(modo==="formulado"&&seleccionados.length===0)return alert("Seleccioná al menos un alimento");
-    if(modo==="estandar"){const req=calcularRequerimientos(peso,razaObj);sRes({tipo:"estandar",req});}
-    else{const res=formularRacion(seleccionados,peso,razaObj,preciosUsr,minsAlimentos);sRes({tipo:"formulado",res});}
+    if(seleccionados.length===0)return alert("Seleccioná al menos un alimento");
+    const res = formularRacionPorSistema(seleccionados, peso, razaObj, preciosUsr, sistema, minsAlimentos);
+    sRes(res);
   };
   return(
     <div className="flex flex-col gap-5">
@@ -605,21 +641,62 @@ function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
       <Card className="flex flex-col gap-4">
         <Inp label="Peso vivo (kg)" type="number" value={peso} onChange={e=>{sP(e.target.value);sRes(null);}} placeholder="Ej: 280"/>
         <Sel label="Raza" value={raza} onChange={e=>{sR(e.target.value);sRes(null);}}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel>
-        <div className="flex gap-2">{[["estandar","🌾 Estándar NRC"],["formulado","🔬 Mis alimentos"]].map(([id,lb])=>(<button key={id} onClick={()=>{sM(id);sRes(null);}} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border ${modo===id?"bg-emerald-600 border-emerald-500 text-white":"bg-zinc-800 border-zinc-600 text-zinc-400"}`}>{lb}</button>))}</div>
-        {modo==="formulado"&&(<div className="flex flex-col gap-3"><div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Elegí los alimentos disponibles. La app usa <span className="text-emerald-400 font-semibold">Cuadrado de Pearson + NRC-2000</span> y respeta los mínimos diarios que hayas definido en "Alimentos y Precios".</p></div><Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}`}</Btn>{showSel&&(<div className="flex flex-col gap-1"><Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>{TIPOS_ORDER.map(tipo=>{const gr=filtrados.filter(a=>a.tipo===tipo);if(!gr.length)return null;return(<div key={tipo}><div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>{gr.map(al=>{
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Sistema de producción</label>
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(SISTEMAS).map(([key, val]) => (
+              <button key={key} onClick={()=>{setSistema(key); sRes(null);}} className={`py-2 rounded-xl text-xs font-bold transition-all border ${sistema===key?"bg-emerald-600 border-emerald-500 text-white":"bg-zinc-800 border-zinc-600 text-zinc-400"}`}>
+                {val.nombre.split(" ")[0]}<br/><span className="text-[10px]">{val.gdp}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">{SISTEMAS[sistema].desc} · GDP esperado {SISTEMAS[sistema].gdp}</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Seleccioná los alimentos disponibles. La app distribuirá forraje y concentrado según el sistema elegido y respetará los mínimos que hayas definido.</p></div>
+          <Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}`}</Btn>
+          {showSel&&(<div className="flex flex-col gap-1"><Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>{TIPOS_ORDER.map(tipo=>{const gr=filtrados.filter(a=>a.tipo===tipo);if(!gr.length)return null;return(<div key={tipo}><div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>{gr.map(al=>{
             const minMostrar = minsAlimentos[al.id] || 0;
             return(<button key={al.id} onClick={()=>{toggle(al.id);sRes(null);}} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id)?"border-emerald-600 bg-emerald-950/40 text-emerald-300":"border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}><div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id)?"✓":""}</span></div><span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id]??al.precio_kg).toFixed(2)}/kg {minMostrar>0 && `· Mín: ${minMostrar} kg/día`}</span></button>);
-          })}</div>);})}</div>)}{seleccionados.length>0&&(<div className="flex flex-wrap gap-1.5">{seleccionados.map(al=>(<span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">{al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button></span>))}</div>)}</div>)}
+          })}</div>);})}</div>)}
+          {seleccionados.length>0&&(<div className="flex flex-wrap gap-1.5">{seleccionados.map(al=>(<span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">{al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button></span>))}</div>)}
+        </div>
         <Btn onClick={calcular} className="w-full py-3 text-base">Calcular Ración</Btn>
       </Card>
-      {resultado?.tipo==="estandar"&&resultado.req&&(()=>{const req=resultado.req;const pv=parseFloat(peso);return(<Card><div className="text-emerald-400 font-black text-base mb-1">🌾 Requerimientos NRC-2000</div><p className="text-zinc-500 text-xs mb-4">{razaObj.nombre} · GDP esperado: {req.gdp} kg/día</p><div className="grid grid-cols-3 gap-2 mb-4">{[{l:"EM/día",v:`${req.em_total.toFixed(2)} Mcal`,c:"text-amber-400"},{l:"PB/día",v:`${req.pb_total.toFixed(0)} g`,c:"text-sky-400"},{l:"MS óptima",v:`${req.ms_opt.toFixed(1)} kg`,c:"text-emerald-400"}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3 text-center"><div className={`font-black text-base ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Ración diaria sugerida</div>{[{n:"Pasto Mombasa/Marandu (fresco)",kg:(req.ms_opt*0.60/0.22).toFixed(1)},{n:"Maíz Amarillo (grano)",kg:(req.ms_opt*0.22/0.88).toFixed(1)},{n:"Torta de Soya 44%",kg:(req.ms_opt*0.08/0.88).toFixed(1)},{n:"Sal Mineral",kg:"0.08"},{n:"Bicarbonato de Sodio",kg:"0.10"}].map(r=>(<div key={r.n} className="flex justify-between py-2 border-b border-zinc-800 last:border-0"><span className="text-zinc-300 text-sm">{r.n}</span><span className="text-emerald-400 font-bold text-sm">{r.kg} kg</span></div>))}<div className="mt-3 bg-zinc-800/50 rounded-xl p-3"><p className="text-zinc-500 text-xs">MS rango: {req.ms_min.toFixed(1)}–{req.ms_max.toFixed(1)} kg/día ({((req.ms_min/pv)*100).toFixed(0)}–{((req.ms_max/pv)*100).toFixed(0)}% PV)</p></div></Card>);})()}
-      {resultado?.tipo==="formulado"&&resultado.res&&(()=>{const r=resultado.res;const bEM=parseFloat(r.balance_em),bPB=parseFloat(r.balance_prot),msPV=parseFloat(r.ms_pct_pv),msOk=msPV>=2.0&&msPV<=3.0;return(<div className="flex flex-col gap-3">{r.alertaAcidosis&&(<Card className="border-red-700/50 bg-red-950/30"><div className="text-red-400 font-bold text-sm mb-1">🚨 Riesgo de acidosis ruminal</div><p className="text-zinc-400 text-xs">FDN: {r.fdn_pct}% (mín. 35%). Agregá heno o paja y 100g/día de bicarbonato.</p></Card>)}{r.alertaPastoFresco&&!r.alertaAcidosis&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-400 font-bold text-sm mb-1">⚠️ Precaución — pasto fresco</div><p className="text-zinc-400 text-xs">Alta proporción de pasto verde. Puede causar timpanismo. Suplementá con heno y bicarbonato.</p></Card>)}<Card><div className="flex items-center justify-between mb-1"><div className="text-sky-400 font-black text-base">🔬 Ración formulada</div><Badge color="purple">Pearson+NRC</Badge></div><p className="text-zinc-500 text-xs mb-4">Método: {r.metodo}</p><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg/día</div><div className="flex flex-col gap-2 mb-4">{r.racion.map((al,i)=>(<div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"><div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div><div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div><div className="grid grid-cols-2 gap-2 mb-3">{[{l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% PV`,ok:msOk},{l:"FDN",v:`${r.fdn_pct}%`,sub:"mín. 35%",ok:parseFloat(r.fdn_pct)>=35},{l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`,ok:bEM>=-0.5},{l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`,ok:bPB>=-30},{l:"Costo/día",v:`Bs. ${r.costo_total}`,sub:"",ok:true},{l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`,sub:"",ok:true}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className={`font-bold text-sm ${s.ok?"text-emerald-400":"text-red-400"}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>))}</div><div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>{[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína",v:r.balance_prot,u:"g"}].map(b=>{const ok=parseFloat(b.v)>=-0.5;return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;})}</div></Card>{(bEM<-1.0||bPB<-80)&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div><p className="text-zinc-400 text-xs">{bEM<-1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{bPB<-80?"Déficit de proteína → agregá torta de soya o harina de carne.":""}</p></Card>)}</div>);})()}
+      {resultado && (()=>{
+        const r = resultado;
+        const sistemaActual = SISTEMAS[r.sistemaUsado];
+        return (<div className="flex flex-col gap-3">
+          {r.alertas && r.alertas.map((alerta, idx) => (
+            <Card key={idx} className={`${alerta.tipo==="critico"?"border-red-700/50 bg-red-950/30":"border-amber-700/50 bg-amber-950/30"}`}>
+              <div className={`${alerta.tipo==="critico"?"text-red-400":"text-amber-400"} font-bold text-sm`}>{alerta.msg}</div>
+            </Card>
+          ))}
+          <Card>
+            <div className="flex items-center justify-between mb-1"><div className="text-sky-400 font-black text-base">🔬 Ración para sistema {sistemaActual.nombre}</div><Badge color="purple">Sistema+Pearson</Badge></div>
+            <p className="text-zinc-500 text-xs mb-2">GDP esperado: {sistemaActual.gdp} · Concentrado real: {r.pctConcReal}%</p>
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg/día</div>
+            <div className="flex flex-col gap-2 mb-4">{r.racion.map((al,i)=>(<div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"><div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div><div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div></div>))}</div>
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[{l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% PV`},{l:"FDN",v:`${r.fdn_pct}%`,sub:"mín 35%"},{l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`},{l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`},{l:"Costo/día",v:`Bs. ${r.costo_total}`},{l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className="font-bold text-sm text-emerald-400">{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>))}
+            </div>
+            <div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5">
+              <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>
+              {[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína",v:r.balance_prot,u:"g"}].map(b=>{const ok=parseFloat(b.v)>=-0.5;return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;})}
+            </div>
+          </Card>
+          {(parseFloat(r.balance_em) < -1.0 || parseFloat(r.balance_prot) < -80) && (
+            <Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div><p className="text-zinc-400 text-xs">{parseFloat(r.balance_em) < -1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{parseFloat(r.balance_prot) < -80?"Déficit de proteína → agregá torta de soya o harina de carne.":""}</p></Card>
+          )}
+        </div>);
+      })()}
     </div>
   );
 }
 
 // ============================================================
-// APP PRINCIPAL (con estado para mínimos personalizados)
+// APP PRINCIPAL
 // ============================================================
 export default function App() {
   const [user,sU]=useState(null);
@@ -629,7 +706,7 @@ export default function App() {
   const [animalSel,sAS]=useState(null);
   const [preciosUsr,sPU]=useState({});
   const [customAl,sCA]=useState([]);
-  const [minsAlimentos, sMins] = useState({}); // { id: minimo_kg_dia }
+  const [minsAlimentos, sMins] = useState({});
   const [dataLoading,sDL]=useState(false);
 
   const isAdmin=user?.email===ADMIN_EMAIL;
@@ -653,7 +730,6 @@ export default function App() {
         sPU(precios);
         const alSnap=await getDocs(userCol(uid,"alimentos_custom"));
         sCA(alSnap.docs.map(d=>({_id:d.id,id:d.id,...d.data()})));
-        // Cargar mínimos personalizados
         const minsSnap=await getDocs(userCol(uid,"minimos"));
         const mins={};
         minsSnap.docs.forEach(d=>{mins[d.id]=d.data().valor;});
