@@ -109,7 +109,7 @@ const TIPO_LABELS = {
 const TIPOS_ORDER = ["forraje_fresco","heno_silo","energetico","subproducto","proteico","proteico_animal","suplemento"];
 
 // ============================================================
-// MOTOR NUTRICIONAL NRC-2000 + Cuadrado de Pearson
+// MOTOR NUTRICIONAL MEJORADO CON MÍNIMOS PRÁCTICOS Y PERSONALIZABLES
 // ============================================================
 function calcularRequerimientos(pv, razaObj) {
   const pvN = parseFloat(pv);
@@ -124,74 +124,191 @@ function calcularRequerimientos(pv, razaObj) {
   const pb_total = (prot_mant + prot_crec) / 0.65;
   return { em_total, pb_total, ms_min: pvN*0.020, ms_opt: pvN*(razaObj?razaObj.ajuste_ms:0.024), ms_max: pvN*0.030, gdp, pvN };
 }
+
 function pearsonSquare(prot_obj, pE, pP) {
   if (pP <= prot_obj || prot_obj <= pE) return null;
-  const partE=pP-prot_obj, partP=prot_obj-pE, tot=partE+partP;
-  return { pct_E:partE/tot, pct_P:partP/tot };
+  const partE = pP - prot_obj;
+  const partP = prot_obj - pE;
+  const tot = partE + partP;
+  return { pct_E: partE / tot, pct_P: partP / tot };
 }
-function formularRacion(seleccionados, pv, razaObj, preciosUsr) {
+
+// Nueva función que respeta mínimos definidos por usuario (si existen)
+function formularRacion(seleccionados, pv, razaObj, preciosUsr, minsPersonalizados = {}) {
   const req = calcularRequerimientos(pv, razaObj);
-  if (!req || seleccionados.length===0) return null;
-  const getPrecio = al => preciosUsr[al.id]!==undefined ? preciosUsr[al.id] : al.precio_kg;
-  const byTipo = t => seleccionados.filter(a=>a.tipo===t);
-  const ff=byTipo("forraje_fresco"), hs=byTipo("heno_silo");
-  const en=byTipo("energetico"), pr=[...byTipo("proteico"),...byTipo("proteico_animal")];
-  const sb=byTipo("subproducto"), sup=byTipo("suplemento");
-  const racion=[]; let ms_u=0,em_u=0,prot_u=0,fdn_u=0;
-  const add=(al,kg)=>{
-    if(kg<=0.001)return;
-    const msKg=kg*(al.ms/100);
-    racion.push({...al,kg_dia:+kg.toFixed(2),ms_kg:+msKg.toFixed(3),precio_kg:getPrecio(al)});
-    ms_u+=msKg; em_u+=msKg*al.em; prot_u+=msKg*(al.prot/100)*1000; fdn_u+=msKg*(al.fdn/100);
+  if (!req || seleccionados.length === 0) return null;
+
+  const getPrecio = al => preciosUsr[al.id] !== undefined ? preciosUsr[al.id] : al.precio_kg;
+  const getMinKg = al => minsPersonalizados[al.id] !== undefined ? minsPersonalizados[al.id] : 0;
+
+  const byTipo = t => seleccionados.filter(a => a.tipo === t);
+  const ff = byTipo("forraje_fresco");
+  const hs = byTipo("heno_silo");
+  const en = byTipo("energetico");
+  const pr = [...byTipo("proteico"), ...byTipo("proteico_animal")];
+  const sb = byTipo("subproducto");
+  const sup = byTipo("suplemento");
+
+  let racion = [];
+  let ms_u = 0, em_u = 0, prot_u = 0, fdn_u = 0;
+
+  const add = (al, kg) => {
+    if (kg <= 0.001) return;
+    const msKg = kg * (al.ms / 100);
+    racion.push({ ...al, kg_dia: +kg.toFixed(2), ms_kg: +msKg.toFixed(3), precio_kg: getPrecio(al) });
+    ms_u += msKg;
+    em_u += msKg * al.em;
+    prot_u += msKg * (al.prot / 100) * 1000;
+    fdn_u += msKg * (al.fdn / 100);
   };
-  sup.forEach(s=>{
-    const kg=s.id==="sal_mineral"?req.pvN*0.00008:s.id==="bicarbonato"?0.100:s.id==="oxido_mg"?0.050:s.id==="urea"?Math.min(0.050,req.pvN*0.0001):s.id==="monensina"?0.00030:s.id==="fosfato_bic"?0.040:0.060;
-    add(s,kg);
+
+  // 1. Suplementos fijos (dosis)
+  sup.forEach(s => {
+    let kg = 0;
+    if (s.id === "sal_mineral") kg = req.pvN * 0.00008;
+    else if (s.id === "bicarbonato") kg = 0.1;
+    else if (s.id === "oxido_mg") kg = 0.05;
+    else if (s.id === "urea") kg = Math.min(0.05, req.pvN * 0.0001);
+    else if (s.id === "monensina") kg = 0.0003;
+    else if (s.id === "fosfato_bic") kg = 0.04;
+    else kg = 0.06;
+    add(s, kg);
   });
-  if(ff.length>0){const ms_ff=Math.min(req.ms_opt*0.60,req.ms_opt-ms_u);ff.forEach(f=>add(f,(ms_ff/ff.length)/(f.ms/100)));}
-  if(hs.length>0){const ms_hs=Math.max(0,req.ms_opt*0.50-ms_u);if(ms_hs>0.1)hs.forEach(h=>add(h,(ms_hs/hs.length)/(h.ms/100)));}
-  const ms_conc=Math.max(0,req.ms_max-ms_u);
-  const todos_conc=[...en,...pr,...sb];
-  if(ms_conc>0.2&&todos_conc.length>0){
-    const em_def=req.em_total-em_u;
-    const prot_def=Math.max(0,req.pb_total-prot_u);
-    const ms_cr=Math.min(ms_conc,Math.max(em_def/2.9,0.3));
-    const prot_obj=Math.min(Math.max(ms_cr>0?(prot_def/1000/ms_cr)*100:12,8),40);
-    const mejorE=en.length>0?en.reduce((a,b)=>a.em>b.em?a:b):(sb.length>0?sb[0]:null);
-    const mejorP=pr.length>0?pr.reduce((a,b)=>a.prot>b.prot?a:b):null;
-    let fracs={};
-    if(mejorE&&mejorP&&mejorP.prot>prot_obj&&mejorE.prot<prot_obj){
-      const ps=pearsonSquare(prot_obj,mejorE.prot,mejorP.prot);
-      if(ps){
-        const otros=todos_conc.filter(a=>a.id!==mejorE.id&&a.id!==mejorP.id);
-        const fEx=otros.length>0?0.10:0;
-        fracs[mejorE.id]=ps.pct_E*(1-fEx); fracs[mejorP.id]=ps.pct_P*(1-fEx);
-        otros.forEach(a=>fracs[a.id]=fEx/otros.length);
+
+  // 2. Forraje fresco (base)
+  if (ff.length > 0) {
+    let ms_ff = Math.min(req.ms_opt * 0.6, req.ms_opt - ms_u);
+    ms_ff = Math.max(ms_ff, req.pvN * 0.012); // mínimo 1.2% PV
+    ff.forEach(f => add(f, (ms_ff / ff.length) / (f.ms / 100)));
+  }
+
+  // 3. Heno / silaje (fibra mínima)
+  if (hs.length > 0) {
+    let ms_hs = Math.max(0, req.ms_opt * 0.4 - ms_u);
+    if (ms_hs < 0.5 && hs.some(h => h.tipo === "heno_silo")) ms_hs = 0.5;
+    if (ms_hs > 0.1) hs.forEach(h => add(h, (ms_hs / hs.length) / (h.ms / 100)));
+  }
+
+  // 4. Aplicar mínimos personalizados a concentrados (energéticos, proteicos, subproductos)
+  const todos_conc = [...en, ...pr, ...sb];
+  let ms_conc_max = Math.max(0, req.ms_max - ms_u);
+  let ms_conc_usado = 0;
+
+  // Primero forzar los mínimos personalizados
+  todos_conc.forEach(al => {
+    const minKg = getMinKg(al);
+    if (minKg > 0) {
+      const msMin = minKg * (al.ms / 100);
+      if (msMin <= ms_conc_max - ms_conc_usado) {
+        add(al, minKg);
+        ms_conc_usado += msMin;
+      } else {
+        // Si no cabe el mínimo, agregamos lo que cabe (pero al menos algo)
+        const kgPosible = (ms_conc_max - ms_conc_usado) / (al.ms / 100);
+        if (kgPosible > 0.05) add(al, kgPosible);
+        ms_conc_usado = ms_conc_max;
       }
     }
-    if(Object.keys(fracs).length===0){
-      const sc=a=>a.em*0.5+(a.prot/100)*2;
-      const tot=todos_conc.reduce((s,a)=>s+sc(a),0);
-      todos_conc.forEach(a=>fracs[a.id]=sc(a)/tot);
-    }
-    todos_conc.forEach(al=>{
-      if(!fracs[al.id])return;
-      let ms_al=ms_cr*fracs[al.id];
-      if(al.max_ms_pct)ms_al=Math.min(ms_al,req.ms_max*(al.max_ms_pct/100));
-      add(al,ms_al/(al.ms/100));
-    });
+  });
+
+  let ms_restante = ms_conc_max - ms_conc_usado;
+  if (ms_restante <= 0.2) {
+    return buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff);
   }
-  const fdn_pct=ms_u>0?(fdn_u/ms_u)*100:0;
-  const costo=racion.reduce((s,a)=>s+a.kg_dia*getPrecio(a),0);
-  const metodo=(en.length>0&&pr.length>0)?"Cuadrado de Pearson + NRC-2000":"Ecuaciones algebraicas NRC-2000";
+
+  // 5. Calcular déficit de energía y proteína después de forrajes y mínimos
+  const em_def = Math.max(0, req.em_total - em_u);
+  const prot_def = Math.max(0, req.pb_total - prot_u);
+  const protObjPct = ms_restante > 0 ? (prot_def / 1000 / ms_restante) * 100 : 14;
+  const protObjClamped = Math.min(Math.max(protObjPct, 10), 28);
+
+  // Identificar mejor energético y mejor proteico entre los que no tienen mínimo forzado (o sí, pero ya se asignaron)
+  const enSinMin = en.filter(e => !getMinKg(e));
+  const prSinMin = pr.filter(p => !getMinKg(p));
+  const sbSinMin = sb.filter(s => !getMinKg(s));
+  let mejorE = enSinMin.length ? enSinMin.reduce((a,b)=>a.em>b.em?a:b) : (sbSinMin.length ? sbSinMin.reduce((a,b)=>a.em>b.em?a:b) : null);
+  let mejorP = prSinMin.length ? prSinMin.reduce((a,b)=>a.prot>b.prot?a:b) : (sbSinMin.length ? sbSinMin.reduce((a,b)=>a.prot>b.prot?a:b) : null);
+
+  let fracciones = {};
+  if (mejorE && mejorP && mejorP.prot > protObjClamped && mejorE.prot < protObjClamped) {
+    const ps = pearsonSquare(protObjClamped, mejorE.prot, mejorP.prot);
+    if (ps) {
+      fracciones[mejorE.id] = ps.pct_E;
+      fracciones[mejorP.id] = ps.pct_P;
+      const otros = [...enSinMin, ...prSinMin, ...sbSinMin].filter(a => a.id !== mejorE.id && a.id !== mejorP.id);
+      if (otros.length) {
+        const factorOtros = 0.15;
+        fracciones[mejorE.id] *= (1 - factorOtros);
+        fracciones[mejorP.id] *= (1 - factorOtros);
+        const resto = factorOtros / otros.length;
+        otros.forEach(a => fracciones[a.id] = resto);
+      }
+    }
+  } else {
+    const todos = [...enSinMin, ...prSinMin, ...sbSinMin];
+    if (todos.length) {
+      const totalPuntaje = todos.reduce((sum, a) => sum + (a.em * 0.6 + (a.prot/100)*0.4), 0);
+      todos.forEach(a => fracciones[a.id] = (a.em * 0.6 + (a.prot/100)*0.4) / totalPuntaje);
+    }
+  }
+
+  // Aplicar fracciones sobre ms_restante
+  todos_conc.forEach(al => {
+    if (getMinKg(al)) return; // ya se asignó su mínimo
+    const frac = fracciones[al.id];
+    if (!frac) return;
+    let ms_al = ms_restante * frac;
+    if (al.max_ms_pct) ms_al = Math.min(ms_al, req.ms_max * (al.max_ms_pct / 100));
+    if (ms_al < 0.05) return;
+    add(al, ms_al / (al.ms / 100));
+  });
+
+  // 6. Ajuste iterativo si aún faltan energía o proteína
+  let iter = 0;
+  while ((req.em_total - em_u > 0.3 || req.pb_total - prot_u > 50) && iter < 3 && ms_u < req.ms_max * 0.98) {
+    iter++;
+    const deficitEM = Math.max(0, req.em_total - em_u);
+    const deficitPB = Math.max(0, req.pb_total - prot_u);
+    const msDisponible = Math.max(0, req.ms_max - ms_u);
+    if (msDisponible < 0.1) break;
+    let refuerzoEn = [...en, ...sb].sort((a,b)=>b.em - a.em)[0];
+    let refuerzoPr = [...pr, ...sb].sort((a,b)=>b.prot - a.prot)[0];
+    if (deficitEM > 0.3 && refuerzoEn && msDisponible > 0.1) {
+      let msExtra = Math.min(deficitEM / refuerzoEn.em, msDisponible);
+      msExtra = Math.max(msExtra, 0.2);
+      add(refuerzoEn, msExtra / (refuerzoEn.ms / 100));
+    }
+    if (deficitPB > 50 && refuerzoPr && msDisponible > 0.1) {
+      let msExtra = Math.min(deficitPB / 1000 / (refuerzoPr.prot/100), msDisponible);
+      msExtra = Math.max(msExtra, 0.1);
+      add(refuerzoPr, msExtra / (refuerzoPr.ms / 100));
+    }
+  }
+
+  return buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff);
+}
+
+function buildResult(racion, req, ms_u, em_u, prot_u, fdn_u, ff) {
+  const fdn_pct = ms_u > 0 ? (fdn_u / ms_u) * 100 : 0;
+  const costo = racion.reduce((s, a) => s + a.kg_dia * a.precio_kg, 0);
+  const metodo = "NRC-2000 + Pearson con mínimos prácticos personalizables";
   return {
-    racion, req, ms_total:ms_u.toFixed(2), ms_pct_pv:((ms_u/req.pvN)*100).toFixed(1),
-    em_total:em_u.toFixed(2), prot_total:prot_u.toFixed(0), fdn_pct:fdn_pct.toFixed(1),
-    costo_total:costo.toFixed(2), balance_em:(em_u-req.em_total).toFixed(2),
-    balance_prot:(prot_u-req.pb_total).toFixed(0),
-    alertaAcidosis:fdn_pct<35, alertaPastoFresco:ff.length>0&&fdn_pct<42, metodo,
+    racion, req,
+    ms_total: ms_u.toFixed(2),
+    ms_pct_pv: ((ms_u / req.pvN) * 100).toFixed(1),
+    em_total: em_u.toFixed(2),
+    prot_total: prot_u.toFixed(0),
+    fdn_pct: fdn_pct.toFixed(1),
+    costo_total: costo.toFixed(2),
+    balance_em: (em_u - req.em_total).toFixed(2),
+    balance_prot: (prot_u - req.pb_total).toFixed(0),
+    alertaAcidosis: fdn_pct < 35,
+    alertaPastoFresco: ff.length > 0 && fdn_pct < 42,
+    metodo,
   };
 }
+
+// Funciones auxiliares (sin cambios)
 function calcularGDP(pesadas) {
   if(!pesadas||pesadas.length<2)return 0;
   const p1=pesadas[0],p2=pesadas[pesadas.length-1];
@@ -227,7 +344,7 @@ function recomendarAjuste(gdp,razaObj,esCriollo) {
 }
 
 // ============================================================
-// UI BASE
+// UI COMPONENTS (sin cambios)
 // ============================================================
 const Badge=({children,color="green"})=>{
   const c={green:"bg-emerald-900/50 text-emerald-300 border-emerald-700",yellow:"bg-amber-900/50 text-amber-300 border-amber-700",red:"bg-red-900/50 text-red-300 border-red-700",blue:"bg-sky-900/50 text-sky-300 border-sky-700",gray:"bg-zinc-800 text-zinc-400 border-zinc-600",purple:"bg-purple-900/50 text-purple-300 border-purple-700"};
@@ -242,19 +359,16 @@ const Btn=({children,onClick,variant="primary",className="",disabled=false})=>{
 };
 
 // ============================================================
-// LOGIN CON RECUPERAR CONTRASEÑA
+// LOGIN (igual)
 // ============================================================
 function LoginScreen() {
   const [email,sE]=useState(""); const [pass,sP]=useState(""); const [err,sErr]=useState(""); const [loading,sL]=useState(false);
-  const [modo,sM]=useState("login"); // "login" | "reset"
-  const [resetOk,sRO]=useState(false);
-
+  const [modo,sM]=useState("login"); const [resetOk,sRO]=useState(false);
   const login=async()=>{
     if(!email||!pass)return sErr("Completá correo y contraseña");
     sL(true); sErr("");
-    try{
-      await signInWithEmailAndPassword(auth,email,pass);
-    }catch(e){
+    try{ await signInWithEmailAndPassword(auth,email,pass); }
+    catch(e){
       if(e.code==="auth/invalid-credential"||e.code==="auth/wrong-password"||e.code==="auth/user-not-found") sErr("Correo o contraseña incorrectos");
       else if(e.code==="auth/invalid-email") sErr("El correo no es válido");
       else if(e.code==="auth/too-many-requests") sErr("Demasiados intentos. Esperá unos minutos.");
@@ -262,20 +376,16 @@ function LoginScreen() {
     }
     sL(false);
   };
-
   const resetPass=async()=>{
     if(!email)return sErr("Ingresá tu correo primero");
     sL(true); sErr("");
-    try{
-      await sendPasswordResetEmail(auth,email);
-      sRO(true);
-    }catch(e){
+    try{ await sendPasswordResetEmail(auth,email); sRO(true); }
+    catch(e){
       if(e.code==="auth/user-not-found") sErr("No existe cuenta con ese correo");
       else sErr("Error al enviar el correo. Intentá de nuevo.");
     }
     sL(false);
   };
-
   return(
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -292,12 +402,7 @@ function LoginScreen() {
           ):(
             <>
               {resetOk?(
-                <div className="text-center py-4">
-                  <div className="text-4xl mb-3">📧</div>
-                  <p className="text-emerald-400 font-bold text-sm mb-2">¡Correo enviado!</p>
-                  <p className="text-zinc-400 text-xs mb-4">Revisá tu bandeja de entrada y seguí las instrucciones para restablecer tu contraseña.</p>
-                  <Btn onClick={()=>{sM("login");sRO(false);}} variant="secondary" className="w-full">Volver al login</Btn>
-                </div>
+                <div className="text-center py-4"><div className="text-4xl mb-3">📧</div><p className="text-emerald-400 font-bold text-sm mb-2">¡Correo enviado!</p><p className="text-zinc-400 text-xs mb-4">Revisá tu bandeja de entrada y seguí las instrucciones para restablecer tu contraseña.</p><Btn onClick={()=>{sM("login");sRO(false);}} variant="secondary" className="w-full">Volver al login</Btn></div>
               ):(
                 <>
                   <p className="text-zinc-400 text-sm">Ingresá tu correo y te enviaremos un enlace para restablecer tu contraseña.</p>
@@ -316,13 +421,12 @@ function LoginScreen() {
 }
 
 // ============================================================
-// PERFIL — Cambio de contraseña
+// PERFIL (igual)
 // ============================================================
 function PerfilUsuario({user,onBack}) {
   const isAdmin=user.email===ADMIN_EMAIL;
   const [actual,sA]=useState(""); const [nueva,sN]=useState(""); const [conf,sC]=useState("");
   const [err,sErr]=useState(""); const [ok,sOk]=useState(false); const [loading,sL]=useState(false);
-
   const cambiarPass=async()=>{
     if(!actual||!nueva||!conf)return sErr("Completá todos los campos");
     if(nueva.length<6)return sErr("La nueva contraseña debe tener al menos 6 caracteres");
@@ -339,18 +443,11 @@ function PerfilUsuario({user,onBack}) {
     }
     sL(false);
   };
-
   return(
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><h2 className="text-2xl font-black text-white">Mi Perfil</h2></div>
       <Card className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-900/50 border border-emerald-700 rounded-full w-12 h-12 flex items-center justify-center text-2xl">🐄</div>
-          <div>
-            <div className="text-white font-bold text-sm">{user.email}</div>
-            <div className="mt-1">{isAdmin?<Badge color="purple">👑 Administrador</Badge>:<Badge color="gray">Usuario</Badge>}</div>
-          </div>
-        </div>
+        <div className="flex items-center gap-3"><div className="bg-emerald-900/50 border border-emerald-700 rounded-full w-12 h-12 flex items-center justify-center text-2xl">🐄</div><div><div className="text-white font-bold text-sm">{user.email}</div><div className="mt-1">{isAdmin?<Badge color="purple">👑 Administrador</Badge>:<Badge color="gray">Usuario</Badge>}</div></div></div>
       </Card>
       <Card className="flex flex-col gap-4">
         <div className="text-sm font-bold text-zinc-300">Cambiar contraseña</div>
@@ -366,63 +463,38 @@ function PerfilUsuario({user,onBack}) {
 }
 
 // ============================================================
-// DASHBOARD
+// DASHBOARD (igual)
 // ============================================================
 function Dashboard({animales,onNav,isAdmin}) {
   const alertas=animales.filter(a=>{const g=calcularGDP(a.pesadas);const r=RAZAS.find(x=>x.id===a.raza)||RAZAS[8];return a.pesadas?.length>=2&&g<r.gdp_base*0.70;}).length;
   const listos=animales.filter(a=>{const u=a.pesadas?.length>0?a.pesadas[a.pesadas.length-1].peso:a.peso_inicial;return u>=430;}).length;
   return(
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <div><h2 className="text-2xl font-black text-white">Panel Principal</h2><p className="text-zinc-500 text-sm">Santa Cruz · Engorde bovino</p></div>
-        {isAdmin&&<Badge color="purple">👑 Admin</Badge>}
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        {[{l:"Animales",v:animales.length,i:"🐄",c:"text-emerald-400"},{l:"Alertas",v:alertas,i:"⚠️",c:"text-amber-400"},{l:"Listos",v:listos,i:"✅",c:"text-sky-400"}].map(s=>(
-          <Card key={s.l} className="text-center py-4"><div className="text-2xl mb-1">{s.i}</div><div className={`text-2xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>
-        ))}
-      </div>
+      <div className="flex items-center justify-between"><div><h2 className="text-2xl font-black text-white">Panel Principal</h2><p className="text-zinc-500 text-sm">Santa Cruz · Engorde bovino</p></div>{isAdmin&&<Badge color="purple">👑 Admin</Badge>}</div>
+      <div className="grid grid-cols-3 gap-3">{[{l:"Animales",v:animales.length,i:"🐄",c:"text-emerald-400"},{l:"Alertas",v:alertas,i:"⚠️",c:"text-amber-400"},{l:"Listos",v:listos,i:"✅",c:"text-sky-400"}].map(s=>(<Card key={s.l} className="text-center py-4"><div className="text-2xl mb-1">{s.i}</div><div className={`text-2xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>))}</div>
       {alertas>0&&<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-400 font-bold text-sm mb-1">⚠️ {alertas} animal(es) con bajo rendimiento</div><p className="text-zinc-400 text-xs">Revisá sus raciones.</p><Btn variant="secondary" onClick={()=>onNav("animales")} className="mt-2 text-xs py-1">Ver →</Btn></Card>}
       {listos>0&&<Card className="border-emerald-700/50 bg-emerald-950/30"><div className="text-emerald-400 font-bold text-sm mb-1">✅ {listos} animal(es) listos para venta</div><p className="text-zinc-400 text-xs">Superaron los 430 kg. Evaluá la venta.</p></Card>}
-      <div className="grid grid-cols-2 gap-3">
-        {[{l:"Mis Animales",i:"🐄",n:"animales"},{l:"Formular Ración",i:"🔬",n:"racion"},{l:"Alimentos y Precios",i:"📦",n:"alimentos"},{l:"Mi Perfil",i:"👤",n:"perfil"}].map(m=>(
-          <button key={m.n} onClick={()=>onNav(m.n)} className="bg-zinc-900 border border-zinc-700/60 rounded-2xl p-5 flex flex-col items-center gap-2 hover:border-emerald-600/60 hover:bg-zinc-800/60 transition-all group">
-            <span className="text-3xl group-hover:scale-110 transition-transform">{m.i}</span>
-            <span className="text-sm font-semibold text-zinc-300">{m.l}</span>
-          </button>
-        ))}
-      </div>
+      <div className="grid grid-cols-2 gap-3">{[{l:"Mis Animales",i:"🐄",n:"animales"},{l:"Formular Ración",i:"🔬",n:"racion"},{l:"Alimentos y Precios",i:"📦",n:"alimentos"},{l:"Mi Perfil",i:"👤",n:"perfil"}].map(m=>(<button key={m.n} onClick={()=>onNav(m.n)} className="bg-zinc-900 border border-zinc-700/60 rounded-2xl p-5 flex flex-col items-center gap-2 hover:border-emerald-600/60 hover:bg-zinc-800/60 transition-all group"><span className="text-3xl group-hover:scale-110 transition-transform">{m.i}</span><span className="text-sm font-semibold text-zinc-300">{m.l}</span></button>))}</div>
     </div>
   );
 }
 
 // ============================================================
-// ANIMALES
+// ANIMALES (igual, solo renombro componentes internos)
 // ============================================================
 function ListaAnimales({animales,onSelect,onNav}) {
+  const AnimalCard = ({animal, onClick}) => {
+    const raza=RAZAS.find(r=>r.id===animal.raza)||RAZAS[8];
+    const ult=animal.pesadas?.length>0?animal.pesadas[animal.pesadas.length-1].peso:animal.peso_inicial;
+    const gdp=calcularGDP(animal.pesadas);
+    const col=animal.pesadas?.length<2?"gray":gdp>=raza.gdp_base*0.85?"green":gdp>=raza.gdp_base*0.60?"yellow":"red";
+    return(<button onClick={onClick} className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 text-left hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all"><div className="flex justify-between items-start mb-3"><div><div className="font-bold text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div><Badge color={col}>{col==="green"?"Bien":col==="yellow"?"Regular":col==="red"?"Alerta":"Sin datos"}</Badge></div><div className="grid grid-cols-3 gap-2 text-center">{{v:`${ult} kg`,l:"actual",c:"text-emerald-400"},{v:`${animal.peso_inicial} kg`,l:"entrada",c:"text-sky-400"},{v:gdp>0?`${gdp.toFixed(2)}/d`:"—",l:"GDP kg",c:"text-amber-400"}.map(s=>(<div key={s.l}><div className={`font-black text-lg ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>))}</div></button>);
+  };
   return(
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center"><h2 className="text-2xl font-black text-white">Mis Animales</h2><Btn onClick={()=>onNav("nuevo")} className="text-xs py-1.5">+ Agregar</Btn></div>
-      {animales.length===0
-        ?<Card className="text-center py-10"><div className="text-5xl mb-3">🐄</div><p className="text-zinc-500 text-sm">Sin animales registrados</p><Btn onClick={()=>onNav("nuevo")} className="mt-4">Agregar primer animal</Btn></Card>
-        :<div className="flex flex-col gap-3">{animales.map(a=><AnimalCard key={a._id} animal={a} onClick={()=>onSelect(a)}/>)}</div>}
+      {animales.length===0?<Card className="text-center py-10"><div className="text-5xl mb-3">🐄</div><p className="text-zinc-500 text-sm">Sin animales registrados</p><Btn onClick={()=>onNav("nuevo")} className="mt-4">Agregar primer animal</Btn></Card>:<div className="flex flex-col gap-3">{animales.map(a=><AnimalCard key={a._id} animal={a} onClick={()=>onSelect(a)}/>)}</div>}
     </div>
-  );
-}
-function AnimalCard({animal,onClick}) {
-  const raza=RAZAS.find(r=>r.id===animal.raza)||RAZAS[8];
-  const ult=animal.pesadas?.length>0?animal.pesadas[animal.pesadas.length-1].peso:animal.peso_inicial;
-  const gdp=calcularGDP(animal.pesadas);
-  const col=animal.pesadas?.length<2?"gray":gdp>=raza.gdp_base*0.85?"green":gdp>=raza.gdp_base*0.60?"yellow":"red";
-  return(
-    <button onClick={onClick} className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 text-left hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all">
-      <div className="flex justify-between items-start mb-3"><div><div className="font-bold text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div><Badge color={col}>{col==="green"?"Bien":col==="yellow"?"Regular":col==="red"?"Alerta":"Sin datos"}</Badge></div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        {[{v:`${ult} kg`,l:"actual",c:"text-emerald-400"},{v:`${animal.peso_inicial} kg`,l:"entrada",c:"text-sky-400"},{v:gdp>0?`${gdp.toFixed(2)}/d`:"—",l:"GDP kg",c:"text-amber-400"}].map(s=>(
-          <div key={s.l}><div className={`font-black text-lg ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>
-        ))}
-      </div>
-    </button>
   );
 }
 function NuevoAnimal({onGuardar,onBack,uid}) {
@@ -437,20 +509,7 @@ function NuevoAnimal({onGuardar,onBack,uid}) {
     onGuardar({...animal,_id:ref.id});
     sL(false);
   };
-  return(
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><h2 className="text-2xl font-black text-white">Nuevo Animal</h2></div>
-      <Card className="flex flex-col gap-4">
-        <Inp label="Nombre o N° de caravana" value={f.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Toro #001"/>
-        <Sel label="Raza" value={f.raza} onChange={e=>set("raza",e.target.value)}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel>
-        <Sel label="Sexo" value={f.sexo} onChange={e=>set("sexo",e.target.value)}><option value="macho">Macho (toro/novillo)</option><option value="hembra">Hembra</option></Sel>
-        <Inp label="Peso inicial (kg)" type="number" value={f.peso_inicial} onChange={e=>set("peso_inicial",e.target.value)} placeholder="Ej: 220"/>
-        <Inp label="Fecha de entrada" type="date" value={f.fecha_entrada} onChange={e=>set("fecha_entrada",e.target.value)}/>
-        <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Notas (opcional)</label><textarea className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none h-16 placeholder-zinc-500" value={f.notas} onChange={e=>set("notas",e.target.value)} placeholder="Observaciones..."/></div>
-        <Btn className="w-full py-3" onClick={guardar} disabled={loading}>{loading?"Guardando...":"Guardar Animal"}</Btn>
-      </Card>
-    </div>
-  );
+  return(<div className="flex flex-col gap-5"><div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><h2 className="text-2xl font-black text-white">Nuevo Animal</h2></div><Card className="flex flex-col gap-4"><Inp label="Nombre o N° de caravana" value={f.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Toro #001"/><Sel label="Raza" value={f.raza} onChange={e=>set("raza",e.target.value)}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel><Sel label="Sexo" value={f.sexo} onChange={e=>set("sexo",e.target.value)}><option value="macho">Macho (toro/novillo)</option><option value="hembra">Hembra</option></Sel><Inp label="Peso inicial (kg)" type="number" value={f.peso_inicial} onChange={e=>set("peso_inicial",e.target.value)} placeholder="Ej: 220"/><Inp label="Fecha de entrada" type="date" value={f.fecha_entrada} onChange={e=>set("fecha_entrada",e.target.value)}/><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Notas (opcional)</label><textarea className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none h-16 placeholder-zinc-500" value={f.notas} onChange={e=>set("notas",e.target.value)} placeholder="Observaciones..."/></div><Btn className="w-full py-3" onClick={guardar} disabled={loading}>{loading?"Guardando...":"Guardar Animal"}</Btn></Card></div>);
 }
 function DetalleAnimal({animal,onUpdate,onDelete,onBack,preciosUsr,uid}) {
   const [tab,sT]=useState("info");
@@ -475,45 +534,27 @@ function DetalleAnimal({animal,onUpdate,onDelete,onBack,preciosUsr,uid}) {
     sNP({fecha:new Date().toISOString().slice(0,10),peso:"",nota:""});
     sSv(false);
   };
-  const eliminar=async()=>{
-    await deleteDoc(userDoc(uid,"animales",animal._id));
-    onDelete(animal._id);
+  const eliminar=async()=>{ await deleteDoc(userDoc(uid,"animales",animal._id)); onDelete(animal._id); };
+  const VentaCalc=({pesoActual,raza})=>{
+    const [pV,sPV]=useState("22"); const [pC,sPC]=useState("65");
+    const pc=raza.pc_canal,canal=Math.round(pesoActual*pc),huesos=Math.round(canal*0.20),carne=canal-huesos,viseras=Math.round(pesoActual*0.08);
+    return(<div className="flex flex-col gap-3"><div className="grid grid-cols-2 gap-3"><Inp label="Bs/kg peso vivo" type="number" value={pV} onChange={e=>sPV(e.target.value)}/><Inp label="Bs/kg carne limpia" type="number" value={pC} onChange={e=>sPC(e.target.value)}/></div><div className="bg-zinc-800 rounded-xl p-4 flex flex-col gap-2"><div className="flex justify-between text-sm"><span className="text-zinc-400">Venta en pie ({pesoActual} kg)</span><span className="text-emerald-400 font-bold">Bs. {(pesoActual*parseFloat(pV||0)).toFixed(0)}</span></div><div className="flex justify-between text-sm"><span className="text-zinc-400">Venta por carne ({carne} kg)</span><span className="text-sky-400 font-bold">Bs. {(carne*parseFloat(pC||0)).toFixed(0)}</span></div><div className="border-t border-zinc-700 mt-1 pt-2 text-zinc-500 text-xs">Canal:{canal} kg · Huesos:{huesos} kg · Vísceras:{viseras} kg · Rend.:{(pc*100).toFixed(0)}%</div></div></div>);
   };
-  return(
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><div><div className="text-xl font-black text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div></div>
-        {!confirmDel?<Btn variant="danger" onClick={()=>sCD(true)} className="text-xs py-1 px-3">🗑️ Eliminar</Btn>:<div className="flex gap-1"><Btn variant="danger" onClick={eliminar} className="text-xs py-1 px-2">✓ Confirmar</Btn><Btn variant="ghost" onClick={()=>sCD(false)} className="text-xs py-1 px-2">Cancelar</Btn></div>}
-      </div>
-      {bajRend&&(<Card className="border-red-700/50 bg-red-950/30"><div className="text-red-400 font-bold text-sm mb-2">⚠️ Bajo rendimiento — GDP: {gdp.toFixed(3)} kg/día · Esperado: {raza.gdp_base}</div>{aj.map((a,i)=>(<div key={i} className="bg-zinc-900 rounded-xl p-3 mb-2"><div className="text-amber-400 font-semibold text-xs">{a.titulo}</div><div className="text-zinc-400 text-xs mt-0.5">{a.detalle}</div>{a.costo&&<div className="text-emerald-400 text-xs mt-1">Costo extra: {a.costo}</div>}</div>))}</Card>)}
-      <div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">
-        {[["info","Info"],["pesadas","Pesadas"],["proyeccion","Proyección"],["venta","Venta"]].map(([id,lb])=>(
-          <button key={id} onClick={()=>sT(id)} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tab===id?"bg-emerald-600 text-white":"text-zinc-400"}`}>{lb}</button>
-        ))}
-      </div>
-      {tab==="info"&&(<div className="grid grid-cols-2 gap-3">{[{l:"Peso inicial",v:`${animal.peso_inicial} kg`,c:"text-zinc-300"},{l:"Peso actual",v:`${ult} kg`,c:"text-emerald-400"},{l:"Ganancia total",v:`${(ult-animal.peso_inicial).toFixed(0)} kg`,c:"text-sky-400"},{l:"GDP promedio",v:gdp>0?`${gdp.toFixed(3)} kg/d`:"Sin datos",c:"text-amber-400"}].map(s=>(<Card key={s.l} className="text-center py-3"><div className={`text-xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>))}{animal.notas&&<Card className="col-span-2"><p className="text-zinc-400 text-sm">📝 {animal.notas}</p></Card>}</div>)}
-      {tab==="pesadas"&&(<div className="flex flex-col gap-3"><Card className="flex flex-col gap-3"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Registrar pesada</div><Inp label="Fecha" type="date" value={np.fecha} onChange={e=>sNP(p=>({...p,fecha:e.target.value}))}/><Inp label="Peso (kg)" type="number" value={np.peso} onChange={e=>sNP(p=>({...p,peso:e.target.value}))} placeholder="285"/><Inp label="Nota (opcional)" value={np.nota} onChange={e=>sNP(p=>({...p,nota:e.target.value}))} placeholder="Observación..."/><Btn onClick={addPesada} disabled={saving}>{saving?"Guardando...":"Registrar"}</Btn></Card>{[...(animal.pesadas||[])].reverse().map((p,i)=>(<Card key={i} className="py-3"><div className="flex justify-between items-center"><div><div className="text-white font-bold">{p.peso} kg</div><div className="text-zinc-500 text-xs">{p.fecha}{p.nota?` · ${p.nota}`:""}</div></div><Badge color="gray">{i===animal.pesadas.length-1?"entrada":"pesada"}</Badge></div></Card>))}</div>)}
-      {tab==="proyeccion"&&(<div className="flex flex-col gap-3">{[{meta:450,proj:p450},{meta:500,proj:p500}].map(({meta,proj})=>proj?(<Card key={meta}><div className="text-emerald-400 font-black text-lg mb-3">Meta: {meta} kg</div><div className="grid grid-cols-2 gap-3 mb-3"><div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-white font-black text-xl">{proj.dias} días</div><div className="text-zinc-500 text-xs">{proj.meses} meses</div></div><div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-amber-400 font-black text-xl">{proj.canal} kg</div><div className="text-zinc-500 text-xs">peso canal</div></div></div><div className="grid grid-cols-3 gap-2 text-center">{[{v:`${proj.carneLimpia} kg`,l:"carne",c:"text-emerald-400"},{v:`${proj.huesos} kg`,l:"huesos",c:"text-zinc-300"},{v:`${proj.viseras} kg`,l:"vísceras",c:"text-zinc-300"}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-2"><div className={`font-bold text-sm ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>))}</div></Card>):<Card key={meta}><p className="text-zinc-500 text-sm text-center">Ya superó los {meta} kg</p></Card>)}<Card className="bg-zinc-800/40 border-zinc-600/40"><p className="text-zinc-500 text-xs">* Basado en GDP {gdp>0?"real del animal":"esperado para la raza"}.</p></Card></div>)}
-      {tab==="venta"&&(<div className="flex flex-col gap-3">{animal.pesadas?.length>=2?(<Card className={ev.conviene?"border-emerald-700/50 bg-emerald-950/30":"border-amber-700/50 bg-amber-950/30"}><div className={`font-black text-base mb-2 ${ev.conviene?"text-emerald-400":"text-amber-400"}`}>{ev.conviene?"✅ Evalúa vender ahora":"⏳ Continuar engorde"}</div><p className="text-zinc-300 text-sm">{ev.recomendacion}</p><div className="mt-3 pt-3 border-t border-zinc-700 flex flex-col gap-1"><div className="flex justify-between text-xs"><span className="text-zinc-500">GDP real</span><span className="text-white font-bold">{gdp.toFixed(3)} kg/día</span></div><div className="flex justify-between text-xs"><span className="text-zinc-500">Eficiencia</span><Badge color={ev.eficiencia==="buena"?"green":ev.eficiencia==="regular"?"yellow":"red"}>{ev.eficiencia}</Badge></div></div></Card>):<Card><p className="text-zinc-500 text-sm text-center">Registrá al menos 2 pesadas para la recomendación</p></Card>}<Card><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Calculadora de venta</div><VentaCalc pesoActual={ult} raza={raza}/></Card></div>)}
-    </div>
-  );
-}
-function VentaCalc({pesoActual,raza}) {
-  const [pV,sPV]=useState("22"); const [pC,sPC]=useState("65");
-  const pc=raza.pc_canal,canal=Math.round(pesoActual*pc),huesos=Math.round(canal*0.20),carne=canal-huesos,viseras=Math.round(pesoActual*0.08);
-  return(<div className="flex flex-col gap-3"><div className="grid grid-cols-2 gap-3"><Inp label="Bs/kg peso vivo" type="number" value={pV} onChange={e=>sPV(e.target.value)}/><Inp label="Bs/kg carne limpia" type="number" value={pC} onChange={e=>sPC(e.target.value)}/></div><div className="bg-zinc-800 rounded-xl p-4 flex flex-col gap-2"><div className="flex justify-between text-sm"><span className="text-zinc-400">Venta en pie ({pesoActual} kg)</span><span className="text-emerald-400 font-bold">Bs. {(pesoActual*parseFloat(pV||0)).toFixed(0)}</span></div><div className="flex justify-between text-sm"><span className="text-zinc-400">Venta por carne ({carne} kg)</span><span className="text-sky-400 font-bold">Bs. {(carne*parseFloat(pC||0)).toFixed(0)}</span></div><div className="border-t border-zinc-700 mt-1 pt-2 text-zinc-500 text-xs">Canal:{canal} kg · Huesos:{huesos} kg · Vísceras:{viseras} kg · Rend.:{(pc*100).toFixed(0)}%</div></div></div>);
+  return(<div className="flex flex-col gap-4"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><div><div className="text-xl font-black text-white">{animal.nombre}</div><div className="text-zinc-500 text-xs">{raza.nombre} · {animal.sexo}</div></div></div>{!confirmDel?<Btn variant="danger" onClick={()=>sCD(true)} className="text-xs py-1 px-3">🗑️ Eliminar</Btn>:<div className="flex gap-1"><Btn variant="danger" onClick={eliminar} className="text-xs py-1 px-2">✓ Confirmar</Btn><Btn variant="ghost" onClick={()=>sCD(false)} className="text-xs py-1 px-2">Cancelar</Btn></div>}</div>{bajRend&&(<Card className="border-red-700/50 bg-red-950/30"><div className="text-red-400 font-bold text-sm mb-2">⚠️ Bajo rendimiento — GDP: {gdp.toFixed(3)} kg/día · Esperado: {raza.gdp_base}</div>{aj.map((a,i)=>(<div key={i} className="bg-zinc-900 rounded-xl p-3 mb-2"><div className="text-amber-400 font-semibold text-xs">{a.titulo}</div><div className="text-zinc-400 text-xs mt-0.5">{a.detalle}</div>{a.costo&&<div className="text-emerald-400 text-xs mt-1">Costo extra: {a.costo}</div>}</div>))}</Card>)}<div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">{["info","pesadas","proyeccion","venta"].map(id=>(<button key={id} onClick={()=>sT(id)} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tab===id?"bg-emerald-600 text-white":"text-zinc-400"}`}>{id==="info"?"Info":id==="pesadas"?"Pesadas":id==="proyeccion"?"Proyección":"Venta"}</button>))}</div>{tab==="info"&&(<div className="grid grid-cols-2 gap-3">{[{l:"Peso inicial",v:`${animal.peso_inicial} kg`,c:"text-zinc-300"},{l:"Peso actual",v:`${ult} kg`,c:"text-emerald-400"},{l:"Ganancia total",v:`${(ult-animal.peso_inicial).toFixed(0)} kg`,c:"text-sky-400"},{l:"GDP promedio",v:gdp>0?`${gdp.toFixed(3)} kg/d`:"Sin datos",c:"text-amber-400"}].map(s=>(<Card key={s.l} className="text-center py-3"><div className={`text-xl font-black ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></Card>))}{animal.notas&&<Card className="col-span-2"><p className="text-zinc-400 text-sm">📝 {animal.notas}</p></Card>}</div>)}{tab==="pesadas"&&(<div className="flex flex-col gap-3"><Card className="flex flex-col gap-3"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Registrar pesada</div><Inp label="Fecha" type="date" value={np.fecha} onChange={e=>sNP(p=>({...p,fecha:e.target.value}))}/><Inp label="Peso (kg)" type="number" value={np.peso} onChange={e=>sNP(p=>({...p,peso:e.target.value}))} placeholder="285"/><Inp label="Nota (opcional)" value={np.nota} onChange={e=>sNP(p=>({...p,nota:e.target.value}))} placeholder="Observación..."/><Btn onClick={addPesada} disabled={saving}>{saving?"Guardando...":"Registrar"}</Btn></Card>{[...(animal.pesadas||[])].reverse().map((p,i)=>(<Card key={i} className="py-3"><div className="flex justify-between items-center"><div><div className="text-white font-bold">{p.peso} kg</div><div className="text-zinc-500 text-xs">{p.fecha}{p.nota?` · ${p.nota}`:""}</div></div><Badge color="gray">{i===animal.pesadas.length-1?"entrada":"pesada"}</Badge></div></Card>))}</div>)}{tab==="proyeccion"&&(<div className="flex flex-col gap-3">{[{meta:450,proj:p450},{meta:500,proj:p500}].map(({meta,proj})=>proj?(<Card key={meta}><div className="text-emerald-400 font-black text-lg mb-3">Meta: {meta} kg</div><div className="grid grid-cols-2 gap-3 mb-3"><div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-white font-black text-xl">{proj.dias} días</div><div className="text-zinc-500 text-xs">{proj.meses} meses</div></div><div className="bg-zinc-800 rounded-xl p-3 text-center"><div className="text-amber-400 font-black text-xl">{proj.canal} kg</div><div className="text-zinc-500 text-xs">peso canal</div></div></div><div className="grid grid-cols-3 gap-2 text-center">{[{v:`${proj.carneLimpia} kg`,l:"carne",c:"text-emerald-400"},{v:`${proj.huesos} kg`,l:"huesos",c:"text-zinc-300"},{v:`${proj.viseras} kg`,l:"vísceras",c:"text-zinc-300"}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-2"><div className={`font-bold text-sm ${s.c}`}>{s.v}</div><div className="text-zinc-600 text-xs">{s.l}</div></div>))}</div></Card>):<Card key={meta}><p className="text-zinc-500 text-sm text-center">Ya superó los {meta} kg</p></Card>)}<Card className="bg-zinc-800/40 border-zinc-600/40"><p className="text-zinc-500 text-xs">* Basado en GDP {gdp>0?"real del animal":"esperado para la raza"}.</p></Card></div>)}{tab==="venta"&&(<div className="flex flex-col gap-3">{animal.pesadas?.length>=2?(<Card className={ev.conviene?"border-emerald-700/50 bg-emerald-950/30":"border-amber-700/50 bg-amber-950/30"}><div className={`font-black text-base mb-2 ${ev.conviene?"text-emerald-400":"text-amber-400"}`}>{ev.conviene?"✅ Evalúa vender ahora":"⏳ Continuar engorde"}</div><p className="text-zinc-300 text-sm">{ev.recomendacion}</p><div className="mt-3 pt-3 border-t border-zinc-700 flex flex-col gap-1"><div className="flex justify-between text-xs"><span className="text-zinc-500">GDP real</span><span className="text-white font-bold">{gdp.toFixed(3)} kg/día</span></div><div className="flex justify-between text-xs"><span className="text-zinc-500">Eficiencia</span><Badge color={ev.eficiencia==="buena"?"green":ev.eficiencia==="regular"?"yellow":"red"}>{ev.eficiencia}</Badge></div></div></Card>):<Card><p className="text-zinc-500 text-sm text-center">Registrá al menos 2 pesadas para la recomendación</p></Card>}<Card><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Calculadora de venta</div><VentaCalc pesoActual={ult} raza={raza}/></Card></div>)}</div>);
 }
 
 // ============================================================
-// ALIMENTOS Y PRECIOS
+// ALIMENTOS Y PRECIOS (mejorado: permite definir mínimo diario personalizado)
 // ============================================================
-function GestionAlimentos({preciosUsr,onPrecio,customAl,onAddCustom,uid}) {
+function GestionAlimentos({preciosUsr, onPrecio, customAl, onAddCustom, uid, minsAlimentos, onSetMinimo}) {
   const [busq,sB]=useState(""); const [editId,sEI]=useState(null); const [editVal,sEV]=useState("");
+  const [editMinId, sEMId] = useState(null); const [editMinVal, sEMVal] = useState("");
   const [showForm,sSF]=useState(false); const [saving,sSv]=useState(false);
   const [form,sForm]=useState({nombre:"",tipo:"energetico",ms:"",prot:"",em:"",fdn:"30",max_ms_pct:""});
   const todos=[...ALIMENTOS_BASE,...customAl];
   const filtrados=todos.filter(a=>a.nombre.toLowerCase().includes(busq.toLowerCase())||TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
-  const save=async(id)=>{const v=parseFloat(editVal);if(!isNaN(v)&&v>=0){await onPrecio(id,v);}sEI(null);};
+  const savePrecio=async(id)=>{const v=parseFloat(editVal);if(!isNaN(v)&&v>=0){await onPrecio(id,v);}sEI(null);};
+  const saveMinimo=async(id)=>{const v=parseFloat(editMinVal);if(!isNaN(v)&&v>=0){await onSetMinimo(id,v);}sEMId(null);};
   const guardar=async()=>{
     if(!form.nombre||!form.ms)return alert("Completá nombre y MS%");
     sSv(true);
@@ -525,21 +566,25 @@ function GestionAlimentos({preciosUsr,onPrecio,customAl,onAddCustom,uid}) {
   return(
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center"><h2 className="text-2xl font-black text-white">Alimentos y Precios</h2><Btn onClick={()=>sSF(!showForm)} className="text-xs py-1.5">+ Agregar</Btn></div>
-      <Card className="bg-sky-950/30 border-sky-700/40"><p className="text-sky-300 text-xs">💡 Tocá el precio en verde para editarlo. Los precios se guardan en tu cuenta.</p></Card>
+      <Card className="bg-sky-950/30 border-sky-700/40"><p className="text-sky-300 text-xs">💡 Tocá el precio en verde para editarlo. Además podés definir un mínimo diario (kg) para que la ración siempre incluya esa cantidad.</p></Card>
       {showForm&&(<Card className="flex flex-col gap-3"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Nuevo alimento personalizado</div><Inp label="Nombre" value={form.nombre} onChange={e=>sForm(f=>({...f,nombre:e.target.value}))} placeholder="Ej: Pasto Colonial"/><Sel label="Tipo" value={form.tipo} onChange={e=>sForm(f=>({...f,tipo:e.target.value}))}>{TIPOS_ORDER.map(t=><option key={t} value={t}>{TIPO_LABELS[t]}</option>)}</Sel><div className="grid grid-cols-2 gap-3"><Inp label="MS %" type="number" value={form.ms} onChange={e=>sForm(f=>({...f,ms:e.target.value}))} placeholder="22"/><Inp label="PB %" type="number" value={form.prot} onChange={e=>sForm(f=>({...f,prot:e.target.value}))} placeholder="9"/><Inp label="EM Mcal/kg MS" type="number" value={form.em} onChange={e=>sForm(f=>({...f,em:e.target.value}))} placeholder="2.1"/><Inp label="FDN %" type="number" value={form.fdn} onChange={e=>sForm(f=>({...f,fdn:e.target.value}))} placeholder="65"/><Inp label="Máx MS ración %" type="number" value={form.max_ms_pct} onChange={e=>sForm(f=>({...f,max_ms_pct:e.target.value}))} placeholder="Opcional"/></div><div className="flex gap-2"><Btn onClick={guardar} disabled={saving} className="flex-1">{saving?"Guardando...":"Guardar"}</Btn><Btn variant="secondary" onClick={()=>sSF(false)} className="flex-1">Cancelar</Btn></div></Card>)}
       <Inp placeholder="Buscar alimento..." value={busq} onChange={e=>sB(e.target.value)}/>
       {TIPOS_ORDER.map(tipo=>{
         const grupo=filtrados.filter(a=>a.tipo===tipo);if(!grupo.length)return null;
-        return(<div key={tipo}><div className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">{TIPO_LABELS[tipo]}</div><div className="flex flex-col gap-2">{grupo.map(al=>{const precio=preciosUsr[al.id]!==undefined?preciosUsr[al.id]:al.precio_kg;return(<Card key={al.id} className="py-3"><div className="flex justify-between items-start"><div className="flex-1 pr-2"><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs mt-0.5">MS:{al.ms}% · PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}%</div></div><div className="text-right">{editId===al.id?(<div className="flex items-center gap-1"><input type="number" value={editVal} onChange={e=>sEV(e.target.value)} className="bg-zinc-700 border border-emerald-500 rounded-lg px-2 py-1 text-white text-sm w-20 focus:outline-none" autoFocus onKeyDown={e=>e.key==="Enter"&&save(al.id)}/><button onClick={()=>save(al.id)} className="text-emerald-400 font-bold px-1">✓</button><button onClick={()=>sEI(null)} className="text-zinc-500 px-1">✕</button></div>):(<button onClick={()=>{sEI(al.id);sEV(precio.toString());}} className="text-emerald-400 font-bold text-sm hover:text-emerald-300 underline underline-offset-2">Bs.{precio.toFixed(2)}/kg ✏️</button>)}</div></div></Card>);})}</div></div>);
+        return(<div key={tipo}><div className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">{TIPO_LABELS[tipo]}</div><div className="flex flex-col gap-2">{grupo.map(al=>{
+          const precio=preciosUsr[al.id]!==undefined?preciosUsr[al.id]:al.precio_kg;
+          const minimo=minsAlimentos[al.id]!==undefined?minsAlimentos[al.id]:0;
+          return(<Card key={al.id} className="py-3"><div className="flex justify-between items-start"><div className="flex-1 pr-2"><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs mt-0.5">MS:{al.ms}% · PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}%</div><div className="text-amber-400 text-xs mt-1">Mínimo: {editMinId===al.id?<div className="flex items-center gap-1"><input type="number" value={editMinVal} onChange={e=>sEMVal(e.target.value)} className="bg-zinc-700 border border-amber-500 rounded-lg px-2 py-1 text-white text-sm w-20 focus:outline-none" autoFocus onKeyDown={e=>e.key==="Enter"&&saveMinimo(al.id)}/><button onClick={()=>saveMinimo(al.id)} className="text-amber-400 font-bold px-1">✓</button><button onClick={()=>sEMId(null)} className="text-zinc-500 px-1">✕</button></div>:<button onClick={()=>{sEMId(al.id);sEMVal(minimo.toString());}} className="hover:underline">{minimo>0?`${minimo} kg/día`:"Sin mínimo"} ✏️</button>}</div></div><div className="text-right">{editId===al.id?(<div className="flex items-center gap-1"><input type="number" value={editVal} onChange={e=>sEV(e.target.value)} className="bg-zinc-700 border border-emerald-500 rounded-lg px-2 py-1 text-white text-sm w-20 focus:outline-none" autoFocus onKeyDown={e=>e.key==="Enter"&&savePrecio(al.id)}/><button onClick={()=>savePrecio(al.id)} className="text-emerald-400 font-bold px-1">✓</button><button onClick={()=>sEI(null)} className="text-zinc-500 px-1">✕</button></div>):(<button onClick={()=>{sEI(al.id);sEV(precio.toString());}} className="text-emerald-400 font-bold text-sm hover:text-emerald-300 underline underline-offset-2">Bs.{precio.toFixed(2)}/kg ✏️</button>)}</div></div></Card>);
+        })}</div></div>);
       })}
     </div>
   );
 }
 
 // ============================================================
-// CALCULADORA DE RACIÓN
+// CALCULADORA DE RACIÓN (actualizada para usar minsPersonalizados)
 // ============================================================
-function CalculadoraRacion({preciosUsr,customAl}) {
+function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
   const [peso,sP]=useState(""); const [raza,sR]=useState("otro");
   const [selIds,sS]=useState(new Set()); const [busq,sB]=useState("");
   const [resultado,sRes]=useState(null); const [showSel,sSS]=useState(false); const [modo,sM]=useState("formulado");
@@ -552,7 +597,7 @@ function CalculadoraRacion({preciosUsr,customAl}) {
     if(!peso||parseFloat(peso)<80)return alert("Peso mínimo 80 kg");
     if(modo==="formulado"&&seleccionados.length===0)return alert("Seleccioná al menos un alimento");
     if(modo==="estandar"){const req=calcularRequerimientos(peso,razaObj);sRes({tipo:"estandar",req});}
-    else{const res=formularRacion(seleccionados,peso,razaObj,preciosUsr);sRes({tipo:"formulado",res});}
+    else{const res=formularRacion(seleccionados,peso,razaObj,preciosUsr,minsAlimentos);sRes({tipo:"formulado",res});}
   };
   return(
     <div className="flex flex-col gap-5">
@@ -561,17 +606,20 @@ function CalculadoraRacion({preciosUsr,customAl}) {
         <Inp label="Peso vivo (kg)" type="number" value={peso} onChange={e=>{sP(e.target.value);sRes(null);}} placeholder="Ej: 280"/>
         <Sel label="Raza" value={raza} onChange={e=>{sR(e.target.value);sRes(null);}}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel>
         <div className="flex gap-2">{[["estandar","🌾 Estándar NRC"],["formulado","🔬 Mis alimentos"]].map(([id,lb])=>(<button key={id} onClick={()=>{sM(id);sRes(null);}} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border ${modo===id?"bg-emerald-600 border-emerald-500 text-white":"bg-zinc-800 border-zinc-600 text-zinc-400"}`}>{lb}</button>))}</div>
-        {modo==="formulado"&&(<div className="flex flex-col gap-3"><div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Elegí los alimentos disponibles. La app usa <span className="text-emerald-400 font-semibold">Cuadrado de Pearson + NRC-2000</span> para calcular cantidades óptimas automáticamente.</p></div><Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}`}</Btn>{showSel&&(<div className="flex flex-col gap-1"><Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>{TIPOS_ORDER.map(tipo=>{const gr=filtrados.filter(a=>a.tipo===tipo);if(!gr.length)return null;return(<div key={tipo}><div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>{gr.map(al=>(<button key={al.id} onClick={()=>{toggle(al.id);sRes(null);}} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id)?"border-emerald-600 bg-emerald-950/40 text-emerald-300":"border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}><div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id)?"✓":""}</span></div><span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id]??al.precio_kg).toFixed(2)}/kg</span></button>))}</div>);})}</div>)}{seleccionados.length>0&&(<div className="flex flex-wrap gap-1.5">{seleccionados.map(al=>(<span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">{al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button></span>))}</div>)}</div>)}
+        {modo==="formulado"&&(<div className="flex flex-col gap-3"><div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Elegí los alimentos disponibles. La app usa <span className="text-emerald-400 font-semibold">Cuadrado de Pearson + NRC-2000</span> y respeta los mínimos diarios que hayas definido en "Alimentos y Precios".</p></div><Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}`}</Btn>{showSel&&(<div className="flex flex-col gap-1"><Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>{TIPOS_ORDER.map(tipo=>{const gr=filtrados.filter(a=>a.tipo===tipo);if(!gr.length)return null;return(<div key={tipo}><div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>{gr.map(al=>{
+            const minMostrar = minsAlimentos[al.id] || 0;
+            return(<button key={al.id} onClick={()=>{toggle(al.id);sRes(null);}} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id)?"border-emerald-600 bg-emerald-950/40 text-emerald-300":"border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}><div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id)?"✓":""}</span></div><span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id]??al.precio_kg).toFixed(2)}/kg {minMostrar>0 && `· Mín: ${minMostrar} kg/día`}</span></button>);
+          })}</div>);})}</div>)}{seleccionados.length>0&&(<div className="flex flex-wrap gap-1.5">{seleccionados.map(al=>(<span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">{al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button></span>))}</div>)}</div>)}
         <Btn onClick={calcular} className="w-full py-3 text-base">Calcular Ración</Btn>
       </Card>
-      {resultado?.tipo==="estandar"&&resultado.req&&(()=>{const req=resultado.req;const pv=parseFloat(peso);return(<Card><div className="text-emerald-400 font-black text-base mb-1">🌾 Requerimientos NRC-2000</div><p className="text-zinc-500 text-xs mb-4">{razaObj.nombre} · GDP esperado: {req.gdp} kg/día</p><div className="grid grid-cols-3 gap-2 mb-4">{[{l:"EM/día",v:`${req.em_total.toFixed(2)} Mcal`,c:"text-amber-400"},{l:"PB/día",v:`${req.pb_total.toFixed(0)} g`,c:"text-sky-400"},{l:"MS óptima",v:`${req.ms_opt.toFixed(1)} kg`,c:"text-emerald-400"}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3 text-center"><div className={`font-black text-base ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Ración diaria sugerida</div>{[{n:"Pasto Mombasa/Marandu (fresco)",kg:(req.ms_opt*0.60/0.22).toFixed(1)},{n:"Maíz Amarillo (grano)",kg:(req.ms_opt*0.22/0.88).toFixed(1)},{n:"Torta de Soya 44%",kg:(req.ms_opt*0.08/0.88).toFixed(1)},{n:"Sal Mineral",kg:"0.08"},{n:"Bicarbonato de Sodio",kg:"0.10"}].map(r=>(<div key={r.n} className="flex justify-between py-2 border-b border-zinc-800 last:border-0"><span className="text-zinc-300 text-sm">{r.n}</span><span className="text-emerald-400 font-bold text-sm">{r.kg} kg</span></div>))}<div className="mt-3 bg-zinc-800/50 rounded-xl p-3"><p className="text-zinc-500 text-xs">MS rango: {req.ms_min.toFixed(1)}–{req.ms_max.toFixed(1)} kg/día ({((req.ms_min/pv)*100).toFixed(0)}–{((req.ms_max/pv)*100).toFixed(0)}% PV)</p></div></Card>);})()} 
-      {resultado?.tipo==="formulado"&&resultado.res&&(()=>{const r=resultado.res;const bEM=parseFloat(r.balance_em),bPB=parseFloat(r.balance_prot),msPV=parseFloat(r.ms_pct_pv),msOk=msPV>=2.0&&msPV<=3.0;return(<div className="flex flex-col gap-3">{r.alertaAcidosis&&(<Card className="border-red-700/50 bg-red-950/30"><div className="text-red-400 font-bold text-sm mb-1">🚨 Riesgo de acidosis ruminal</div><p className="text-zinc-400 text-xs">FDN: {r.fdn_pct}% (mín. 35%). Agregá heno o paja y 100g/día de bicarbonato.</p></Card>)}{r.alertaPastoFresco&&!r.alertaAcidosis&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-400 font-bold text-sm mb-1">⚠️ Precaución — pasto fresco</div><p className="text-zinc-400 text-xs">Alta proporción de pasto verde. Puede causar timpanismo. Suplementá con heno y bicarbonato.</p></Card>)}<Card><div className="flex items-center justify-between mb-1"><div className="text-sky-400 font-black text-base">🔬 Ración formulada</div><Badge color="purple">Pearson+NRC</Badge></div><p className="text-zinc-500 text-xs mb-4">Método: {r.metodo}</p><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg/día</div><div className="flex flex-col gap-2 mb-4">{r.racion.map((al,i)=>(<div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"><div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div><div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div><div className="grid grid-cols-2 gap-2 mb-3">{[{l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% PV`,ok:msOk},{l:"FDN",v:`${r.fdn_pct}%`,sub:"mín. 35%",ok:parseFloat(r.fdn_pct)>=35},{l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`,ok:bEM>=-0.5},{l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`,ok:bPB>=-30},{l:"Costo/día",v:`Bs. ${r.costo_total}`,sub:"",ok:true},{l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`,sub:"",ok:true}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className={`font-bold text-sm ${s.ok?"text-emerald-400":"text-red-400"}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>))}</div><div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>{[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína",v:r.balance_prot,u:"g"}].map(b=>{const ok=parseFloat(b.v)>=-0.5;return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;})}</div></Card>{(bEM<-1.0||bPB<-80)&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div><p className="text-zinc-400 text-xs">{bEM<-1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{bPB<-80?"Déficit de proteína → agregá torta de soya o harina de carne.":""}</p></Card>)}</div>);})()} 
+      {resultado?.tipo==="estandar"&&resultado.req&&(()=>{const req=resultado.req;const pv=parseFloat(peso);return(<Card><div className="text-emerald-400 font-black text-base mb-1">🌾 Requerimientos NRC-2000</div><p className="text-zinc-500 text-xs mb-4">{razaObj.nombre} · GDP esperado: {req.gdp} kg/día</p><div className="grid grid-cols-3 gap-2 mb-4">{[{l:"EM/día",v:`${req.em_total.toFixed(2)} Mcal`,c:"text-amber-400"},{l:"PB/día",v:`${req.pb_total.toFixed(0)} g`,c:"text-sky-400"},{l:"MS óptima",v:`${req.ms_opt.toFixed(1)} kg`,c:"text-emerald-400"}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3 text-center"><div className={`font-black text-base ${s.c}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Ración diaria sugerida</div>{[{n:"Pasto Mombasa/Marandu (fresco)",kg:(req.ms_opt*0.60/0.22).toFixed(1)},{n:"Maíz Amarillo (grano)",kg:(req.ms_opt*0.22/0.88).toFixed(1)},{n:"Torta de Soya 44%",kg:(req.ms_opt*0.08/0.88).toFixed(1)},{n:"Sal Mineral",kg:"0.08"},{n:"Bicarbonato de Sodio",kg:"0.10"}].map(r=>(<div key={r.n} className="flex justify-between py-2 border-b border-zinc-800 last:border-0"><span className="text-zinc-300 text-sm">{r.n}</span><span className="text-emerald-400 font-bold text-sm">{r.kg} kg</span></div>))}<div className="mt-3 bg-zinc-800/50 rounded-xl p-3"><p className="text-zinc-500 text-xs">MS rango: {req.ms_min.toFixed(1)}–{req.ms_max.toFixed(1)} kg/día ({((req.ms_min/pv)*100).toFixed(0)}–{((req.ms_max/pv)*100).toFixed(0)}% PV)</p></div></Card>);})()}
+      {resultado?.tipo==="formulado"&&resultado.res&&(()=>{const r=resultado.res;const bEM=parseFloat(r.balance_em),bPB=parseFloat(r.balance_prot),msPV=parseFloat(r.ms_pct_pv),msOk=msPV>=2.0&&msPV<=3.0;return(<div className="flex flex-col gap-3">{r.alertaAcidosis&&(<Card className="border-red-700/50 bg-red-950/30"><div className="text-red-400 font-bold text-sm mb-1">🚨 Riesgo de acidosis ruminal</div><p className="text-zinc-400 text-xs">FDN: {r.fdn_pct}% (mín. 35%). Agregá heno o paja y 100g/día de bicarbonato.</p></Card>)}{r.alertaPastoFresco&&!r.alertaAcidosis&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-400 font-bold text-sm mb-1">⚠️ Precaución — pasto fresco</div><p className="text-zinc-400 text-xs">Alta proporción de pasto verde. Puede causar timpanismo. Suplementá con heno y bicarbonato.</p></Card>)}<Card><div className="flex items-center justify-between mb-1"><div className="text-sky-400 font-black text-base">🔬 Ración formulada</div><Badge color="purple">Pearson+NRC</Badge></div><p className="text-zinc-500 text-xs mb-4">Método: {r.metodo}</p><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg/día</div><div className="flex flex-col gap-2 mb-4">{r.racion.map((al,i)=>(<div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"><div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div><div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div></div>))}</div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div><div className="grid grid-cols-2 gap-2 mb-3">{[{l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% PV`,ok:msOk},{l:"FDN",v:`${r.fdn_pct}%`,sub:"mín. 35%",ok:parseFloat(r.fdn_pct)>=35},{l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`,ok:bEM>=-0.5},{l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`,ok:bPB>=-30},{l:"Costo/día",v:`Bs. ${r.costo_total}`,sub:"",ok:true},{l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`,sub:"",ok:true}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className={`font-bold text-sm ${s.ok?"text-emerald-400":"text-red-400"}`}>{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>))}</div><div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>{[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína",v:r.balance_prot,u:"g"}].map(b=>{const ok=parseFloat(b.v)>=-0.5;return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;})}</div></Card>{(bEM<-1.0||bPB<-80)&&(<Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div><p className="text-zinc-400 text-xs">{bEM<-1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{bPB<-80?"Déficit de proteína → agregá torta de soya o harina de carne.":""}</p></Card>)}</div>);})()}
     </div>
   );
 }
 
 // ============================================================
-// APP PRINCIPAL
+// APP PRINCIPAL (con estado para mínimos personalizados)
 // ============================================================
 export default function App() {
   const [user,sU]=useState(null);
@@ -581,23 +629,19 @@ export default function App() {
   const [animalSel,sAS]=useState(null);
   const [preciosUsr,sPU]=useState({});
   const [customAl,sCA]=useState([]);
+  const [minsAlimentos, sMins] = useState({}); // { id: minimo_kg_dia }
   const [dataLoading,sDL]=useState(false);
 
   const isAdmin=user?.email===ADMIN_EMAIL;
   const uid=user?.uid;
 
-  // Mantener sesión con onAuthStateChanged
   useEffect(()=>{
-    const unsub=onAuthStateChanged(auth,(u)=>{
-      sU(u);
-      sAL(false);
-    });
+    const unsub=onAuthStateChanged(auth,(u)=>{ sU(u); sAL(false); });
     return()=>unsub();
   },[]);
 
-  // Cargar datos del usuario cuando inicia sesión
   useEffect(()=>{
-    if(!uid){sA([]);sPU({});sCA([]);return;}
+    if(!uid){sA([]);sPU({});sCA([]);sMins({});return;}
     const cargar=async()=>{
       sDL(true);
       try{
@@ -609,6 +653,11 @@ export default function App() {
         sPU(precios);
         const alSnap=await getDocs(userCol(uid,"alimentos_custom"));
         sCA(alSnap.docs.map(d=>({_id:d.id,id:d.id,...d.data()})));
+        // Cargar mínimos personalizados
+        const minsSnap=await getDocs(userCol(uid,"minimos"));
+        const mins={};
+        minsSnap.docs.forEach(d=>{mins[d.id]=d.data().valor;});
+        sMins(mins);
       }catch(e){console.error(e);}
       sDL(false);
     };
@@ -619,37 +668,31 @@ export default function App() {
     await setDoc(userDoc(uid,"precios",id),{valor:val,updatedAt:new Date()});
     sPU(p=>({...p,[id]:val}));
   };
+  const handleSetMinimo=async(id,val)=>{
+    if(val===0){
+      await deleteDoc(userDoc(uid,"minimos",id)).catch(()=>{});
+      const newMins = {...minsAlimentos};
+      delete newMins[id];
+      sMins(newMins);
+    } else {
+      await setDoc(userDoc(uid,"minimos",id),{valor:val,updatedAt:new Date()});
+      sMins(m=>({...m,[id]:val}));
+    }
+  };
   const handleUpdateAnimal=(a)=>{sA(p=>p.map(x=>x._id===a._id?a:x));sAS(a);};
   const handleDeleteAnimal=(id)=>{sA(p=>p.filter(x=>x._id!==id));sN("animales");sAS(null);};
   const handleSalir=async()=>{await signOut(auth);sN("dashboard");};
 
   const navItems=[{id:"dashboard",i:"🏠",l:"Inicio"},{id:"animales",i:"🐄",l:"Animales"},{id:"racion",i:"🔬",l:"Ración"},{id:"alimentos",i:"📦",l:"Alimentos"}];
 
-  // Cargando sesión
-  if(authLoading)return(
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando...</p></div>
-    </div>
-  );
-
-  // Sin sesión → login
+  if(authLoading)return(<div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando...</p></div></div>);
   if(!user)return <LoginScreen/>;
-
-  // Cargando datos
-  if(dataLoading)return(
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando tus datos...</p></div>
-    </div>
-  );
+  if(dataLoading)return(<div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando tus datos...</p></div></div>);
 
   return(
     <div className="min-h-screen bg-zinc-950 text-white">
       <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🐄</span>
-          <span className="font-black text-white tracking-tight">GanaBov Pro</span>
-          {isAdmin&&<Badge color="purple">👑</Badge>}
-        </div>
+        <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span>{isAdmin&&<Badge color="purple">👑</Badge>}</div>
         <button onClick={handleSalir} className="text-zinc-500 text-xs hover:text-zinc-300 transition-colors">Salir</button>
       </div>
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
@@ -657,16 +700,12 @@ export default function App() {
         {nav==="animales"&&<ListaAnimales animales={animales} onSelect={a=>{sAS(a);sN("detalle");}} onNav={sN}/>}
         {nav==="nuevo"&&<NuevoAnimal onGuardar={a=>{sA(p=>[...p,a]);sN("animales");}} onBack={()=>sN("animales")} uid={uid}/>}
         {nav==="detalle"&&animalSel&&<DetalleAnimal animal={animalSel} onUpdate={handleUpdateAnimal} onDelete={handleDeleteAnimal} onBack={()=>sN("animales")} preciosUsr={preciosUsr} uid={uid}/>}
-        {nav==="racion"&&<CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl}/>}
-        {nav==="alimentos"&&<GestionAlimentos preciosUsr={preciosUsr} onPrecio={handlePrecio} customAl={customAl} onAddCustom={a=>sCA(p=>[...p,a])} uid={uid}/>}
+        {nav==="racion"&&<CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl} minsAlimentos={minsAlimentos}/>}
+        {nav==="alimentos"&&<GestionAlimentos preciosUsr={preciosUsr} onPrecio={handlePrecio} customAl={customAl} onAddCustom={a=>sCA(p=>[...p,a])} uid={uid} minsAlimentos={minsAlimentos} onSetMinimo={handleSetMinimo}/>}
         {nav==="perfil"&&<PerfilUsuario user={user} onBack={()=>sN("dashboard")}/>}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 flex">
-        {navItems.map(item=>(
-          <button key={item.id} onClick={()=>sN(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav===item.id||(nav==="detalle"&&item.id==="animales")?"text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}>
-            <span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span>
-          </button>
-        ))}
+        {navItems.map(item=>(<button key={item.id} onClick={()=>sN(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav===item.id||(nav==="detalle"&&item.id==="animales")?"text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}><span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span></button>))}
       </div>
     </div>
   );
