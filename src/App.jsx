@@ -26,40 +26,39 @@ const userCol = (uid, col) => collection(db, "users", uid, col);
 const userDoc = (uid, col, id) => doc(db, "users", uid, col, id);
 
 // ============================================================
-// SISTEMAS DE PRODUCCIÓN (Nuevo)
+// SISTEMAS DE PRODUCCIÓN
 // ============================================================
 const SISTEMAS = {
-  extensivo: { 
+  extensivo: {
     nombre: "🌾 Extensivo (pastoreo)",
-    forraje: [85, 100], 
-    concentrado: [0, 15], 
-    ms: [2.0, 2.2],    // % del peso vivo
+    forraje: [85, 100],
+    concentrado: [0, 15],
+    ms: [2.0, 2.2],
     gdp: "0.3 - 0.7 kg/día",
     desc: "Alta fibra, bajo costo"
   },
-  semiIntensivo: { 
+  semiIntensivo: {
     nombre: "⚡ Semi-intensivo",
-    forraje: [60, 75], 
-    concentrado: [25, 40], 
-    ms: [2.2, 2.7], 
+    forraje: [60, 75],
+    concentrado: [25, 40],
+    ms: [2.2, 2.7],
     gdp: "0.8 - 1.3 kg/día",
     desc: "Balanceado, crecimiento óptimo"
   },
-  intensivo: { 
+  intensivo: {
     nombre: "🔥 Intensivo (feedlot)",
-    forraje: [15, 35], 
-    concentrado: [65, 85], 
-    ms: [2.5, 3.0], 
+    forraje: [15, 35],
+    concentrado: [65, 85],
+    ms: [2.5, 3.0],
     gdp: "1.4 - 2.0 kg/día",
     desc: "Alta ganancia, máximo concentrado"
   }
 };
 
 // ============================================================
-// ALIMENTOS BASE (ampliado a más de 80 opciones)
+// ALIMENTOS BASE (más de 80 opciones)
 // ============================================================
 const ALIMENTOS_BASE = [
-  // Forrajes frescos (18)
   { id:"mombasa", nombre:"Pasto Mombasa (fresco)", tipo:"forraje_fresco", ms:22, prot:8.5, em:2.10, fdn:68, max_ms_pct:null, precio_kg:0.50 },
   { id:"marandu", nombre:"Brachiaria Marandu (fresco)", tipo:"forraje_fresco", ms:25, prot:8.0, em:2.05, fdn:70, max_ms_pct:null, precio_kg:0.45 },
   { id:"brachiaria", nombre:"Brachiaria brizantha (fresco)", tipo:"forraje_fresco", ms:24, prot:7.8, em:2.00, fdn:72, max_ms_pct:null, precio_kg:0.45 },
@@ -78,8 +77,6 @@ const ALIMENTOS_BASE = [
   { id:"avena_forr", nombre:"Avena Forrajera (fresco)", tipo:"forraje_fresco", ms:24, prot:10.0, em:2.25, fdn:58, max_ms_pct:null, precio_kg:0.55 },
   { id:"ryegrass", nombre:"Ryegrass (fresco)", tipo:"forraje_fresco", ms:18, prot:12.0, em:2.30, fdn:54, max_ms_pct:null, precio_kg:0.70 },
   { id:"trigo_forr", nombre:"Trigo Forrajero (fresco)", tipo:"forraje_fresco", ms:26, prot:8.5, em:2.15, fdn:62, max_ms_pct:null, precio_kg:0.45 },
-  
-  // Henos y silajes (12)
   { id:"heno_marandu", nombre:"Heno de Marandu", tipo:"heno_silo", ms:88, prot:6.5, em:1.90, fdn:74, max_ms_pct:60, precio_kg:1.20 },
   { id:"heno_estrella", nombre:"Heno de Estrella", tipo:"heno_silo", ms:88, prot:7.0, em:1.95, fdn:72, max_ms_pct:60, precio_kg:1.30 },
   { id:"heno_alfalfa", nombre:"Heno de Alfalfa", tipo:"heno_silo", ms:90, prot:17.0, em:2.20, fdn:44, max_ms_pct:50, precio_kg:2.50 },
@@ -92,8 +89,6 @@ const ALIMENTOS_BASE = [
   { id:"silo_pasto", nombre:"Silaje de Pasto Guinea", tipo:"heno_silo", ms:28, prot:7.5, em:2.00, fdn:67, max_ms_pct:60, precio_kg:0.70 },
   { id:"silo_king", nombre:"Silaje de King Grass", tipo:"heno_silo", ms:29, prot:8.0, em:2.05, fdn:65, max_ms_pct:60, precio_kg:0.75 },
   { id:"bagazo_caña", nombre:"Bagazo de Caña (seco)", tipo:"heno_silo", ms:91, prot:2.5, em:1.55, fdn:85, max_ms_pct:20, precio_kg:0.20 },
-  
-  // Energéticos (15)
   { id:"maiz_am", nombre:"Maíz Amarillo (grano)", tipo:"energetico", ms:88, prot:8.5, em:3.30, fdn:12, max_ms_pct:40, precio_kg:2.20 },
   { id:"maiz_bl", nombre:"Maíz Blanco (grano)", tipo:"energetico", ms:88, prot:8.2, em:3.28, fdn:12, max_ms_pct:40, precio_kg:2.10 },
   { id:"sorgo_rojo", nombre:"Sorgo Rojo (grano)", tipo:"energetico", ms:88, prot:9.0, em:3.10, fdn:14, max_ms_pct:40, precio_kg:1.90 },
@@ -109,8 +104,6 @@ const ALIMENTOS_BASE = [
   { id:"maiz_flor", nombre:"Maíz Flor (descarte)", tipo:"energetico", ms:86, prot:7.5, em:3.10, fdn:15, max_ms_pct:35, precio_kg:1.80 },
   { id:"sorgo_harinoso", nombre:"Sorgo Harinoso", tipo:"energetico", ms:87, prot:8.0, em:3.00, fdn:16, max_ms_pct:40, precio_kg:1.70 },
   { id:"trigo_harina", nombre:"Harina de Trigo (alimento)", tipo:"energetico", ms:89, prot:11.0, em:3.15, fdn:14, max_ms_pct:30, precio_kg:2.40 },
-  
-  // Subproductos (10)
   { id:"salvado_trigo", nombre:"Salvado / Afrechillo de Trigo", tipo:"subproducto", ms:88, prot:15.0, em:2.80, fdn:42, max_ms_pct:20, precio_kg:1.80 },
   { id:"cascara_soya", nombre:"Cascarilla de Soya", tipo:"subproducto", ms:90, prot:12.0, em:2.50, fdn:62, max_ms_pct:20, precio_kg:2.00 },
   { id:"pulpa_citrico", nombre:"Pulpa de Cítricos (seca)", tipo:"subproducto", ms:91, prot:6.5, em:2.80, fdn:22, max_ms_pct:15, precio_kg:2.20 },
@@ -121,8 +114,6 @@ const ALIMENTOS_BASE = [
   { id:"cascara_girasol", nombre:"Cascarilla de Girasol", tipo:"subproducto", ms:90, prot:8.0, em:2.10, fdn:55, max_ms_pct:20, precio_kg:1.30 },
   { id:"granza_cerveza", nombre:"Granza de Cervecería", tipo:"subproducto", ms:25, prot:18.0, em:2.50, fdn:35, max_ms_pct:15, precio_kg:0.60 },
   { id:"torta_caña", nombre:"Torta de Caña (bagacillo)", tipo:"subproducto", ms:85, prot:3.0, em:1.70, fdn:78, max_ms_pct:15, precio_kg:0.25 },
-  
-  // Proteicos vegetales y animales (12)
   { id:"torta_soya44", nombre:"Torta de Soya (44% PB)", tipo:"proteico", ms:88, prot:44.0, em:3.20, fdn:10, max_ms_pct:15, precio_kg:4.50 },
   { id:"torta_soya48", nombre:"Torta de Soya (48% PB)", tipo:"proteico", ms:88, prot:48.0, em:3.10, fdn:8, max_ms_pct:15, precio_kg:5.00 },
   { id:"torta_algod", nombre:"Torta de Algodón", tipo:"proteico", ms:90, prot:36.0, em:2.70, fdn:25, max_ms_pct:10, precio_kg:3.50 },
@@ -137,8 +128,6 @@ const ALIMENTOS_BASE = [
   { id:"h_hueso", nombre:"Harina de Hueso", tipo:"proteico_animal", ms:96, prot:12.0, em:0.00, fdn:0, max_ms_pct:2, precio_kg:3.50 },
   { id:"gallinaza", nombre:"Gallinaza Tratada", tipo:"proteico_animal", ms:88, prot:28.0, em:1.80, fdn:15, max_ms_pct:5, precio_kg:0.80 },
   { id:"pollinaza", nombre:"Pollinaza (cama de pollo)", tipo:"proteico_animal", ms:86, prot:30.0, em:1.85, fdn:20, max_ms_pct:5, precio_kg:0.70 },
-  
-  // Suplementos (11)
   { id:"sal_mineral", nombre:"Sal Mineral Completa", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:1, precio_kg:6.50 },
   { id:"sal_comun", nombre:"Sal Común (NaCl)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:1.50 },
   { id:"bicarbonato", nombre:"Bicarbonato de Sodio (buffer)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:4.00 },
@@ -148,7 +137,7 @@ const ALIMENTOS_BASE = [
   { id:"fosfato_bic", nombre:"Fosfato Bicálcico", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:5.00 },
   { id:"carbonato_ca", nombre:"Carbonato de Calcio", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:0.5, precio_kg:2.50 },
   { id:"zeolita", nombre:"Zeolita (adsorbente)", tipo:"suplemento", ms:99, prot:0.0, em:0.00, fdn:0, max_ms_pct:1, precio_kg:2.00 },
-  { id:"lecitina_soya", nombre:"Lectina de Soya (emulsificante)", tipo:"suplemento", ms:95, prot:0.0, em:4.50, fdn:0, max_ms_pct:0.5, precio_kg:18.0 },
+  { id:"lecitina_soya", nombre:"Lectina de Soya", tipo:"suplemento", ms:95, prot:0.0, em:4.50, fdn:0, max_ms_pct:0.5, precio_kg:18.0 },
   { id:"propanodiol", nombre:"Propilenglicol", tipo:"suplemento", ms:100, prot:0.0, em:3.50, fdn:0, max_ms_pct:0.3, precio_kg:15.0 }
 ];
 
@@ -173,19 +162,17 @@ const TIPO_LABELS = {
 const TIPOS_ORDER = ["forraje_fresco","heno_silo","energetico","subproducto","proteico","proteico_animal","suplemento"];
 
 // ============================================================
-// MOTOR NUTRICIONAL ACTUALIZADO CON SISTEMAS
+// FUNCIONES NUTRICIONALES NRC-2000
 // ============================================================
 function calcularRequerimientos(pv, razaObj, sistemaId) {
   const pvN = parseFloat(pv);
   if (!pvN || pvN < 80) return null;
   const gdpBase = razaObj ? razaObj.gdp_base : 0.78;
-  // Ajuste según sistema (el sistema define un rango, tomamos el promedio para el cálculo energético)
   const sistema = SISTEMAS[sistemaId];
   const msPctPromedio = (sistema.ms[0] + sistema.ms[1]) / 2 / 100;
   const ms_opt = pvN * msPctPromedio;
   const ms_min = pvN * (sistema.ms[0]/100);
   const ms_max = pvN * (sistema.ms[1]/100);
-  // Usamos el GDP base de la raza, pero limitado por el sistema (el sistema muestra un rango, pero no forzamos)
   const gdp = gdpBase;
   const pvMet = Math.pow(pvN, 0.75);
   const em_mant = 0.077 * pvMet * 1.10;
@@ -197,22 +184,44 @@ function calcularRequerimientos(pv, razaObj, sistemaId) {
   return { em_total, pb_total, ms_min, ms_opt, ms_max, gdp, pvN, sistemaId };
 }
 
-function formularRacionPorSistema(seleccionados, pv, razaObj, preciosUsr, sistemaId, minsPersonalizados = {}) {
+// Selección de ingredientes según modo
+function obtenerIngredientesPorModo(modo, sistemaId, preciosUsr, customAl) {
+  const todosAlimentos = [...ALIMENTOS_BASE, ...customAl];
+  let forrajes = todosAlimentos.filter(a => a.tipo === "forraje_fresco" || a.tipo === "heno_silo");
+  let concentrados = todosAlimentos.filter(a => ["energetico","proteico","proteico_animal","subproducto"].includes(a.tipo));
+  
+  if (modo === "automatico") {
+    const mejorForraje = forrajes.sort((a,b) => (b.em / (preciosUsr[b.id]??b.precio_kg)) - (a.em / (preciosUsr[a.id]??a.precio_kg)))[0];
+    const mejorEnergetico = concentrados.filter(c => c.tipo === "energetico").sort((a,b) => (b.em / (preciosUsr[b.id]??b.precio_kg)) - (a.em / (preciosUsr[a.id]??a.precio_kg)))[0];
+    const mejorProteico = concentrados.filter(c => c.tipo === "proteico" || c.tipo === "proteico_animal").sort((a,b) => (b.prot / (preciosUsr[b.id]??b.precio_kg)) - (a.prot / (preciosUsr[a.id]??a.precio_kg)))[0];
+    return { forrajes: [mejorForraje], concentrados: [mejorEnergetico, mejorProteico].filter(Boolean) };
+  } 
+  else if (modo === "economico") {
+    const forrajeBarato = forrajes.sort((a,b) => (preciosUsr[a.id]??a.precio_kg) - (preciosUsr[b.id]??b.precio_kg))[0];
+    const energeticoBarato = concentrados.filter(c => c.tipo === "energetico").sort((a,b) => (preciosUsr[a.id]??a.precio_kg) - (preciosUsr[b.id]??b.precio_kg))[0];
+    const proteicoBarato = concentrados.filter(c => c.tipo === "proteico" || c.tipo === "proteico_animal").sort((a,b) => (preciosUsr[a.id]??a.precio_kg) - (preciosUsr[b.id]??b.precio_kg))[0];
+    return { forrajes: [forrajeBarato], concentrados: [energeticoBarato, proteicoBarato].filter(Boolean) };
+  }
+  return null;
+}
+
+// Función de formulación genérica
+function formularRacionConIngredientes(forrajesSeleccionados, concentradosSeleccionados, pv, razaObj, sistemaId, preciosUsr, minsPersonalizados = {}) {
   const req = calcularRequerimientos(pv, razaObj, sistemaId);
-  if (!req || seleccionados.length === 0) return null;
+  if (!req) return null;
   const sistema = SISTEMAS[sistemaId];
   const getPrecio = al => preciosUsr[al.id] !== undefined ? preciosUsr[al.id] : al.precio_kg;
   const getMinKg = al => minsPersonalizados[al.id] !== undefined ? minsPersonalizados[al.id] : 0;
-
-  // Separar alimentos por tipo
-  const byTipo = t => seleccionados.filter(a => a.tipo === t);
-  let todosForrajes = [...byTipo("forraje_fresco"), ...byTipo("heno_silo")];
-  let concentrados = [...byTipo("energetico"), ...byTipo("proteico"), ...byTipo("proteico_animal"), ...byTipo("subproducto")];
-  const suplementos = byTipo("suplemento");
-
+  
+  const msObjetivo = req.ms_opt;
+  const pctForraje = (sistema.forraje[0] + sistema.forraje[1]) / 2 / 100;
+  const pctConcentrado = (sistema.concentrado[0] + sistema.concentrado[1]) / 2 / 100;
+  let msForraje = msObjetivo * pctForraje;
+  let msConcentrado = msObjetivo * pctConcentrado;
+  
   let racion = [];
   let ms_u = 0, em_u = 0, prot_u = 0, fdn_u = 0;
-
+  
   const add = (al, kg) => {
     if (kg <= 0.001) return;
     const msKg = kg * (al.ms / 100);
@@ -222,8 +231,9 @@ function formularRacionPorSistema(seleccionados, pv, razaObj, preciosUsr, sistem
     prot_u += msKg * (al.prot / 100) * 1000;
     fdn_u += msKg * (al.fdn / 100);
   };
-
-  // 1. Suplementos (dosis fijas)
+  
+  // Suplementos fijos (todos los que estén en la lista de seleccionados)
+  const suplementos = [...forrajesSeleccionados, ...concentradosSeleccionados].filter(a => a.tipo === "suplemento");
   suplementos.forEach(s => {
     let kg = 0;
     if (s.id === "sal_mineral") kg = req.pvN * 0.00008;
@@ -238,93 +248,117 @@ function formularRacionPorSistema(seleccionados, pv, razaObj, preciosUsr, sistem
     else kg = 0.06;
     add(s, kg);
   });
-
-  // Determinar MS total objetivo según sistema (promedio del rango)
-  let msObjetivo = req.ms_opt;
-  // Porcentajes de forraje y concentrado según sistema
-  let pctForraje = (sistema.forraje[0] + sistema.forraje[1]) / 2 / 100;
-  let pctConcentrado = (sistema.concentrado[0] + sistema.concentrado[1]) / 2 / 100;
   
-  let msForraje = msObjetivo * pctForraje;
-  let msConcentrado = msObjetivo * pctConcentrado;
-
-  // Aplicar mínimos personalizados a concentrados
-  let msConcUsado = 0;
-  concentrados.forEach(conc => {
-    const minKg = getMinKg(conc);
+  // Forrajes (respetando mínimos)
+  let msForRestante = msForraje;
+  forrajesSeleccionados.forEach(f => {
+    const minKg = getMinKg(f);
     if (minKg > 0) {
-      const msMin = minKg * (conc.ms / 100);
-      if (msMin <= msConcentrado - msConcUsado) {
-        add(conc, minKg);
-        msConcUsado += msMin;
+      let msMin = minKg * (f.ms/100);
+      if (msMin <= msForRestante) {
+        add(f, minKg);
+        msForRestante -= msMin;
       } else {
-        let posible = (msConcentrado - msConcUsado) / (conc.ms / 100);
-        if (posible > 0.05) add(conc, posible);
-        msConcUsado = msConcentrado;
+        add(f, msForRestante / (f.ms/100));
+        msForRestante = 0;
       }
     }
   });
-  let msConcRestante = msConcentrado - msConcUsado;
-  // Distribuir el resto de concentrados proporcionalmente según energía y proteína (similar a Pearson pero simplificado)
-  if (msConcRestante > 0.05 && concentrados.length) {
-    const concSinMin = concentrados.filter(c => !getMinKg(c));
-    if (concSinMin.length) {
-      const totalPuntaje = concSinMin.reduce((sum, c) => sum + (c.em * 0.6 + (c.prot/100)*0.4), 0);
-      concSinMin.forEach(c => {
-        let punt = (c.em * 0.6 + (c.prot/100)*0.4) / totalPuntaje;
-        let msAl = msConcRestante * punt;
-        if (c.max_ms_pct) msAl = Math.min(msAl, req.ms_max * (c.max_ms_pct/100));
-        if (msAl > 0.05) add(c, msAl / (c.ms / 100));
-      });
-    }
+  if (msForRestante > 0.05 && forrajesSeleccionados.length) {
+    const fraccion = msForRestante / forrajesSeleccionados.length;
+    forrajesSeleccionados.forEach(f => add(f, fraccion / (f.ms/100)));
   }
-
-  // Forrajes: distribuir la MS de forraje entre los seleccionados
-  if (todosForrajes.length) {
-    let msForRestante = msForraje;
-    // Aplicar mínimos a forrajes si los tienen
-    todosForrajes.forEach(f => {
-      const minKg = getMinKg(f);
-      if (minKg > 0) {
-        let msMin = minKg * (f.ms/100);
-        if (msMin <= msForRestante) {
-          add(f, minKg);
-          msForRestante -= msMin;
-        } else {
-          add(f, msForRestante / (f.ms/100));
-          msForRestante = 0;
-        }
-      }
-    });
-    if (msForRestante > 0.05 && todosForrajes.length) {
-      const forrajesSinMin = todosForrajes.filter(f => !getMinKg(f));
-      if (forrajesSinMin.length) {
-        const fraccion = msForRestante / forrajesSinMin.length;
-        forrajesSinMin.forEach(f => {
-          add(f, fraccion / (f.ms/100));
-        });
-      }
-    }
-  }
-
-  // Calcular balances finales
-  const fdn_pct = ms_u > 0 ? (fdn_u / ms_u) * 100 : 0;
-  const costo = racion.reduce((s, a) => s + a.kg_dia * a.precio_kg, 0);
   
-  // Alertas específicas por sistema y por concentrado
-  let alertas = [];
-  const pctConcReal = (concentrados.reduce((acc, c) => {
+  // Concentrados
+  let msConcRestante = msConcentrado;
+  concentradosSeleccionados.forEach(c => {
+    const minKg = getMinKg(c);
+    if (minKg > 0) {
+      let msMin = minKg * (c.ms/100);
+      if (msMin <= msConcRestante) {
+        add(c, minKg);
+        msConcRestante -= msMin;
+      } else {
+        add(c, msConcRestante / (c.ms/100));
+        msConcRestante = 0;
+      }
+    }
+  });
+  if (msConcRestante > 0.05 && concentradosSeleccionados.length) {
+    const em_def = Math.max(0, req.em_total - em_u);
+    const prot_def = Math.max(0, req.pb_total - prot_u);
+    const protObjPct = msConcRestante > 0 ? (prot_def / 1000 / msConcRestante) * 100 : 14;
+    const protObjClamped = Math.min(Math.max(protObjPct, 10), 28);
+    const disponibles = concentradosSeleccionados.filter(c => !getMinKg(c));
+    let mejorE = disponibles.filter(c => c.tipo === "energetico").sort((a,b)=>b.em - a.em)[0];
+    let mejorP = disponibles.filter(c => c.tipo === "proteico" || c.tipo === "proteico_animal").sort((a,b)=>b.prot - a.prot)[0];
+    if (!mejorE) mejorE = disponibles[0];
+    if (!mejorP) mejorP = disponibles[0];
+    let fracciones = {};
+    if (mejorE && mejorP && mejorP.prot > protObjClamped && mejorE.prot < protObjClamped) {
+      const partE = mejorP.prot - protObjClamped;
+      const partP = protObjClamped - mejorE.prot;
+      const total = partE + partP;
+      fracciones[mejorE.id] = partE / total;
+      fracciones[mejorP.id] = partP / total;
+      const otros = disponibles.filter(a => a.id !== mejorE.id && a.id !== mejorP.id);
+      if (otros.length) {
+        const factorOtros = 0.15;
+        fracciones[mejorE.id] *= (1 - factorOtros);
+        fracciones[mejorP.id] *= (1 - factorOtros);
+        const resto = factorOtros / otros.length;
+        otros.forEach(a => fracciones[a.id] = resto);
+      }
+    } else {
+      const totalPuntaje = disponibles.reduce((sum, a) => sum + (a.em * 0.6 + (a.prot/100)*0.4), 0);
+      disponibles.forEach(a => fracciones[a.id] = (a.em * 0.6 + (a.prot/100)*0.4) / totalPuntaje);
+    }
+    disponibles.forEach(c => {
+      const frac = fracciones[c.id];
+      if (!frac) return;
+      let ms_al = msConcRestante * frac;
+      if (c.max_ms_pct) ms_al = Math.min(ms_al, req.ms_max * (c.max_ms_pct/100));
+      if (ms_al < 0.05) return;
+      add(c, ms_al / (c.ms/100));
+    });
+  }
+  
+  // Ajuste iterativo
+  let iter = 0;
+  while ((req.em_total - em_u > 0.3 || req.pb_total - prot_u > 50) && iter < 3 && ms_u < req.ms_max * 0.98) {
+    iter++;
+    const deficitEM = Math.max(0, req.em_total - em_u);
+    const deficitPB = Math.max(0, req.pb_total - prot_u);
+    const msDisponible = Math.max(0, req.ms_max - ms_u);
+    if (msDisponible < 0.1) break;
+    let refuerzoEn = [...concentradosSeleccionados].sort((a,b)=>b.em - a.em)[0];
+    let refuerzoPr = [...concentradosSeleccionados].sort((a,b)=>b.prot - a.prot)[0];
+    if (deficitEM > 0.3 && refuerzoEn && msDisponible > 0.1) {
+      let msExtra = Math.min(deficitEM / refuerzoEn.em, msDisponible);
+      msExtra = Math.max(msExtra, 0.2);
+      add(refuerzoEn, msExtra / (refuerzoEn.ms / 100));
+    }
+    if (deficitPB > 50 && refuerzoPr && msDisponible > 0.1) {
+      let msExtra = Math.min(deficitPB / 1000 / (refuerzoPr.prot/100), msDisponible);
+      msExtra = Math.max(msExtra, 0.1);
+      add(refuerzoPr, msExtra / (refuerzoPr.ms / 100));
+    }
+  }
+  
+  const fdn_pct = ms_u > 0 ? (fdn_u / ms_u) * 100 : 0;
+  const costo = racion.reduce((s, a) => s + a.kg_dia * getPrecio(a), 0);
+  const balance_em = (em_u - req.em_total).toFixed(2);
+  const balance_prot = (prot_u - req.pb_total).toFixed(0);
+  const pctConcReal = (concentradosSeleccionados.reduce((acc, c) => {
     const item = racion.find(r => r.id === c.id);
     return acc + (item ? (item.kg_dia * (c.ms/100)) : 0);
   }, 0) / ms_u) * 100;
   
+  let alertas = [];
   if (pctConcReal > 85) alertas.push({ tipo: "critico", msg: "⚠️ RIESGO CRÍTICO: Concentrado >85% - Peligro de acidosis ruminal. Aumente la fibra." });
   if (sistemaId === "semiIntensivo" && pctConcReal > 40) alertas.push({ tipo: "advertencia", msg: "⚠️ El nivel de concentrado excede el estándar para sistema semi-intensivo (>40%)." });
   if (fdn_pct < 35) alertas.push({ tipo: "critico", msg: "🚨 FDN bajo (<35%) - Riesgo de acidosis. Agregue heno o paja." });
-  if (fdn_pct < 42 && sistemaId !== "intensivo") alertas.push({ tipo: "advertencia", msg: "⚠️ FDN moderado (<42%) - Puede haber problemas de rumia en pastoreo." });
-  
-  const balance_em = (em_u - req.em_total).toFixed(2);
-  const balance_prot = (prot_u - req.pb_total).toFixed(0);
+  if (fdn_pct < 42 && sistemaId !== "intensivo") alertas.push({ tipo: "advertencia", msg: "⚠️ FDN moderado (<42%) - Puede haber problemas de rumia." });
   
   return {
     racion, req,
@@ -342,7 +376,7 @@ function formularRacionPorSistema(seleccionados, pv, razaObj, preciosUsr, sistem
 }
 
 // ============================================================
-// FUNCIONES AUXILIARES (igual que antes)
+// FUNCIONES AUXILIARES (GDP, proyecciones, venta)
 // ============================================================
 function calcularGDP(pesadas) {
   if(!pesadas||pesadas.length<2)return 0;
@@ -379,7 +413,7 @@ function recomendarAjuste(gdp,razaObj,esCriollo) {
 }
 
 // ============================================================
-// COMPONENTES UI (igual que antes)
+// COMPONENTES UI
 // ============================================================
 const Badge=({children,color="green"})=>{
   const c={green:"bg-emerald-900/50 text-emerald-300 border-emerald-700",yellow:"bg-amber-900/50 text-amber-300 border-amber-700",red:"bg-red-900/50 text-red-300 border-red-700",blue:"bg-sky-900/50 text-sky-300 border-sky-700",gray:"bg-zinc-800 text-zinc-400 border-zinc-600",purple:"bg-purple-900/50 text-purple-300 border-purple-700"};
@@ -394,7 +428,7 @@ const Btn=({children,onClick,variant="primary",className="",disabled=false})=>{
 };
 
 // ============================================================
-// LOGIN (igual)
+// LOGIN
 // ============================================================
 function LoginScreen() {
   const [email,sE]=useState(""); const [pass,sP]=useState(""); const [err,sErr]=useState(""); const [loading,sL]=useState(false);
@@ -456,7 +490,7 @@ function LoginScreen() {
 }
 
 // ============================================================
-// PERFIL (igual)
+// PERFIL USUARIO
 // ============================================================
 function PerfilUsuario({user,onBack}) {
   const isAdmin=user.email===ADMIN_EMAIL;
@@ -498,7 +532,7 @@ function PerfilUsuario({user,onBack}) {
 }
 
 // ============================================================
-// DASHBOARD (igual)
+// DASHBOARD
 // ============================================================
 function Dashboard({animales,onNav,isAdmin}) {
   const alertas=animales.filter(a=>{const g=calcularGDP(a.pesadas);const r=RAZAS.find(x=>x.id===a.raza)||RAZAS[8];return a.pesadas?.length>=2&&g<r.gdp_base*0.70;}).length;
@@ -515,7 +549,7 @@ function Dashboard({animales,onNav,isAdmin}) {
 }
 
 // ============================================================
-// ANIMALES (resumidos por brevedad, igual que antes)
+// ANIMALES
 // ============================================================
 function ListaAnimales({animales,onSelect,onNav}) {
   const AnimalCard = ({animal, onClick}) => {
@@ -532,6 +566,7 @@ function ListaAnimales({animales,onSelect,onNav}) {
     </div>
   );
 }
+
 function NuevoAnimal({onGuardar,onBack,uid}) {
   const [f,sF]=useState({nombre:"",raza:"otro",sexo:"macho",peso_inicial:"",fecha_entrada:new Date().toISOString().slice(0,10),notas:""});
   const [loading,sL]=useState(false);
@@ -546,6 +581,7 @@ function NuevoAnimal({onGuardar,onBack,uid}) {
   };
   return(<div className="flex flex-col gap-5"><div className="flex items-center gap-3"><Btn variant="ghost" onClick={onBack} className="text-xs px-2 py-1">← Volver</Btn><h2 className="text-2xl font-black text-white">Nuevo Animal</h2></div><Card className="flex flex-col gap-4"><Inp label="Nombre o N° de caravana" value={f.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Toro #001"/><Sel label="Raza" value={f.raza} onChange={e=>set("raza",e.target.value)}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel><Sel label="Sexo" value={f.sexo} onChange={e=>set("sexo",e.target.value)}><option value="macho">Macho (toro/novillo)</option><option value="hembra">Hembra</option></Sel><Inp label="Peso inicial (kg)" type="number" value={f.peso_inicial} onChange={e=>set("peso_inicial",e.target.value)} placeholder="Ej: 220"/><Inp label="Fecha de entrada" type="date" value={f.fecha_entrada} onChange={e=>set("fecha_entrada",e.target.value)}/><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Notas (opcional)</label><textarea className="bg-zinc-800 border border-zinc-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none h-16 placeholder-zinc-500" value={f.notas} onChange={e=>set("notas",e.target.value)} placeholder="Observaciones..."/></div><Btn className="w-full py-3" onClick={guardar} disabled={loading}>{loading?"Guardando...":"Guardar Animal"}</Btn></Card></div>);
 }
+
 function DetalleAnimal({animal,onUpdate,onDelete,onBack,preciosUsr,uid}) {
   const [tab,sT]=useState("info");
   const [np,sNP]=useState({fecha:new Date().toISOString().slice(0,10),peso:"",nota:""});
@@ -579,7 +615,7 @@ function DetalleAnimal({animal,onUpdate,onDelete,onBack,preciosUsr,uid}) {
 }
 
 // ============================================================
-// GESTIÓN ALIMENTOS (igual que antes con mínimos)
+// GESTIÓN ALIMENTOS (con mínimos personalizables)
 // ============================================================
 function GestionAlimentos({preciosUsr, onPrecio, customAl, onAddCustom, uid, minsAlimentos, onSetMinimo}) {
   const [busq,sB]=useState(""); const [editId,sEI]=useState(null); const [editVal,sEV]=useState("");
@@ -617,80 +653,201 @@ function GestionAlimentos({preciosUsr, onPrecio, customAl, onAddCustom, uid, min
 }
 
 // ============================================================
-// CALCULADORA DE RACIÓN (con selección de sistema)
+// CALCULADORA DE RACIÓN (con sistemas y modos)
 // ============================================================
 function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
-  const [peso,sP]=useState(""); const [raza,sR]=useState("otro");
+  const [peso, setPeso] = useState("");
+  const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
-  const [selIds,sS]=useState(new Set()); const [busq,sB]=useState("");
-  const [resultado,sRes]=useState(null); const [showSel,sSS]=useState(false);
-  const todosAl=[...ALIMENTOS_BASE,...customAl];
-  const filtrados=todosAl.filter(a=>a.nombre.toLowerCase().includes(busq.toLowerCase())||TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
-  const razaObj=RAZAS.find(r=>r.id===raza)||RAZAS[8];
-  const seleccionados=todosAl.filter(a=>selIds.has(a.id));
-  const toggle=(id)=>sS(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
-  const calcular=()=>{
-    if(!peso||parseFloat(peso)<80)return alert("Peso mínimo 80 kg");
-    if(seleccionados.length===0)return alert("Seleccioná al menos un alimento");
-    const res = formularRacionPorSistema(seleccionados, peso, razaObj, preciosUsr, sistema, minsAlimentos);
-    sRes(res);
+  const [modo, setModo] = useState("automatico");
+  const [selIds, setSelIds] = useState(new Set());
+  const [busq, setBusq] = useState("");
+  const [resultado, setResultado] = useState(null);
+  const [showSel, setShowSel] = useState(false);
+  
+  const todosAl = [...ALIMENTOS_BASE, ...customAl];
+  const filtrados = todosAl.filter(a => a.nombre.toLowerCase().includes(busq.toLowerCase()) || TIPO_LABELS[a.tipo]?.toLowerCase().includes(busq.toLowerCase()));
+  const razaObj = RAZAS.find(r => r.id === raza) || RAZAS[8];
+  const seleccionados = todosAl.filter(a => selIds.has(a.id));
+  
+  const toggleSeleccion = (id) => {
+    setSelIds(prev => {
+      const nuevo = new Set(prev);
+      if (nuevo.has(id)) nuevo.delete(id);
+      else nuevo.add(id);
+      return nuevo;
+    });
+    setResultado(null);
   };
-  return(
+  
+  const calcular = () => {
+    if (!peso || parseFloat(peso) < 80) return alert("Peso mínimo 80 kg");
+    if (modo === "personalizado" && seleccionados.length === 0) return alert("Seleccione al menos un alimento en modo personalizado.");
+    
+    let forrajesUsar = [];
+    let concentradosUsar = [];
+    
+    if (modo === "automatico" || modo === "economico") {
+      const ingredientes = obtenerIngredientesPorModo(modo, sistema, preciosUsr, customAl);
+      if (ingredientes) {
+        forrajesUsar = ingredientes.forrajes;
+        concentradosUsar = ingredientes.concentrados;
+      } else {
+        return alert("No se pudo determinar ingredientes para el modo seleccionado.");
+      }
+    } else {
+      forrajesUsar = seleccionados.filter(a => a.tipo === "forraje_fresco" || a.tipo === "heno_silo");
+      concentradosUsar = seleccionados.filter(a => ["energetico","proteico","proteico_animal","subproducto"].includes(a.tipo));
+      if (forrajesUsar.length === 0 && concentradosUsar.length === 0) return alert("Debe seleccionar al menos un forraje o un concentrado.");
+    }
+    
+    const res = formularRacionConIngredientes(forrajesUsar, concentradosUsar, peso, razaObj, sistema, preciosUsr, minsAlimentos);
+    setResultado(res);
+  };
+  
+  return (
     <div className="flex flex-col gap-5">
       <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración</h2>
       <Card className="flex flex-col gap-4">
-        <Inp label="Peso vivo (kg)" type="number" value={peso} onChange={e=>{sP(e.target.value);sRes(null);}} placeholder="Ej: 280"/>
-        <Sel label="Raza" value={raza} onChange={e=>{sR(e.target.value);sRes(null);}}>{RAZAS.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}</Sel>
-        <div className="flex flex-col gap-2">
+        <Inp label="Peso vivo (kg)" type="number" value={peso} onChange={e => { setPeso(e.target.value); setResultado(null); }} placeholder="Ej: 280" />
+        <Sel label="Raza" value={raza} onChange={e => { setRaza(e.target.value); setResultado(null); }}>
+          {RAZAS.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+        </Sel>
+        <div>
           <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Sistema de producción</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 mt-1">
             {Object.entries(SISTEMAS).map(([key, val]) => (
-              <button key={key} onClick={()=>{setSistema(key); sRes(null);}} className={`py-2 rounded-xl text-xs font-bold transition-all border ${sistema===key?"bg-emerald-600 border-emerald-500 text-white":"bg-zinc-800 border-zinc-600 text-zinc-400"}`}>
+              <button key={key} onClick={() => { setSistema(key); setResultado(null); }} className={`py-2 rounded-xl text-xs font-bold transition-all border ${sistema === key ? "bg-emerald-600 border-emerald-500 text-white" : "bg-zinc-800 border-zinc-600 text-zinc-400"}`}>
                 {val.nombre.split(" ")[0]}<br/><span className="text-[10px]">{val.gdp}</span>
               </button>
             ))}
           </div>
           <p className="text-zinc-500 text-xs mt-1">{SISTEMAS[sistema].desc} · GDP esperado {SISTEMAS[sistema].gdp}</p>
         </div>
-        <div className="flex flex-col gap-3">
-          <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3"><p className="text-zinc-400 text-xs">Seleccioná los alimentos disponibles. La app distribuirá forraje y concentrado según el sistema elegido y respetará los mínimos que hayas definido.</p></div>
-          <Btn variant="secondary" onClick={()=>sSS(!showSel)}>{showSel?"Cerrar":`+ Elegir alimentos${seleccionados.length>0?` (${seleccionados.length})`:""}`}</Btn>
-          {showSel&&(<div className="flex flex-col gap-1"><Inp placeholder="Buscar..." value={busq} onChange={e=>sB(e.target.value)}/>{TIPOS_ORDER.map(tipo=>{const gr=filtrados.filter(a=>a.tipo===tipo);if(!gr.length)return null;return(<div key={tipo}><div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>{gr.map(al=>{
-            const minMostrar = minsAlimentos[al.id] || 0;
-            return(<button key={al.id} onClick={()=>{toggle(al.id);sRes(null);}} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id)?"border-emerald-600 bg-emerald-950/40 text-emerald-300":"border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}><div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id)?"✓":""}</span></div><span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id]??al.precio_kg).toFixed(2)}/kg {minMostrar>0 && `· Mín: ${minMostrar} kg/día`}</span></button>);
-          })}</div>);})}</div>)}
-          {seleccionados.length>0&&(<div className="flex flex-wrap gap-1.5">{seleccionados.map(al=>(<span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">{al.nombre.split("(")[0].trim()}<button onClick={()=>{toggle(al.id);sRes(null);}} className="text-emerald-500 hover:text-red-400">×</button></span>))}</div>)}
+        <div>
+          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Modo de formulación</label>
+          <div className="flex gap-2 mt-1">
+            {[["automatico","🚀 Automático (óptimo)"],["economico","💰 Económico"],["personalizado","✏️ Personalizado"]].map(([id, label]) => (
+              <button key={id} onClick={() => { setModo(id); setResultado(null); }} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${modo === id ? "bg-emerald-600 border-emerald-500 text-white" : "bg-zinc-800 border-zinc-600 text-zinc-400"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">
+            {modo === "automatico" && "Selecciona los mejores ingredientes para máxima ganancia."}
+            {modo === "economico" && "Prioriza el menor costo, manteniendo los requerimientos básicos."}
+            {modo === "personalizado" && "Elige manualmente los alimentos que quieres incluir."}
+          </p>
         </div>
+        {modo === "personalizado" && (
+          <div className="flex flex-col gap-3">
+            <Btn variant="secondary" onClick={() => setShowSel(!showSel)}>
+              {showSel ? "Cerrar" : `+ Elegir alimentos${seleccionados.length > 0 ? ` (${seleccionados.length})` : ""}`}
+            </Btn>
+            {showSel && (
+              <div className="flex flex-col gap-1">
+                <Inp placeholder="Buscar..." value={busq} onChange={e => setBusq(e.target.value)} />
+                {TIPOS_ORDER.map(tipo => {
+                  const gr = filtrados.filter(a => a.tipo === tipo);
+                  if (!gr.length) return null;
+                  return (
+                    <div key={tipo}>
+                      <div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">{TIPO_LABELS[tipo]}</div>
+                      {gr.map(al => {
+                        const minMostrar = minsAlimentos[al.id] || 0;
+                        return (
+                          <button key={al.id} onClick={() => toggleSeleccion(al.id)} className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-all mb-1 ${selIds.has(al.id) ? "border-emerald-600 bg-emerald-950/40 text-emerald-300" : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500"}`}>
+                            <div className="flex justify-between"><span className="font-semibold">{al.nombre}</span><span>{selIds.has(al.id) ? "✓" : ""}</span></div>
+                            <span className="text-zinc-500 text-xs">PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.{(preciosUsr[al.id] ?? al.precio_kg).toFixed(2)}/kg {minMostrar > 0 && `· Mín: ${minMostrar} kg/día`}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {seleccionados.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {seleccionados.map(al => (
+                  <span key={al.id} className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full">
+                    {al.nombre.split("(")[0].trim()}
+                    <button onClick={() => toggleSeleccion(al.id)} className="text-emerald-500 hover:text-red-400">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <Btn onClick={calcular} className="w-full py-3 text-base">Calcular Ración</Btn>
       </Card>
-      {resultado && (()=>{
-        const r = resultado;
-        const sistemaActual = SISTEMAS[r.sistemaUsado];
-        return (<div className="flex flex-col gap-3">
-          {r.alertas && r.alertas.map((alerta, idx) => (
-            <Card key={idx} className={`${alerta.tipo==="critico"?"border-red-700/50 bg-red-950/30":"border-amber-700/50 bg-amber-950/30"}`}>
-              <div className={`${alerta.tipo==="critico"?"text-red-400":"text-amber-400"} font-bold text-sm`}>{alerta.msg}</div>
+      
+      {resultado && (
+        <div className="flex flex-col gap-3">
+          {resultado.alertas && resultado.alertas.map((alerta, idx) => (
+            <Card key={idx} className={alerta.tipo === "critico" ? "border-red-700/50 bg-red-950/30" : "border-amber-700/50 bg-amber-950/30"}>
+              <div className={`${alerta.tipo === "critico" ? "text-red-400" : "text-amber-400"} font-bold text-sm`}>{alerta.msg}</div>
             </Card>
           ))}
           <Card>
-            <div className="flex items-center justify-between mb-1"><div className="text-sky-400 font-black text-base">🔬 Ración para sistema {sistemaActual.nombre}</div><Badge color="purple">Sistema+Pearson</Badge></div>
-            <p className="text-zinc-500 text-xs mb-2">GDP esperado: {sistemaActual.gdp} · Concentrado real: {r.pctConcReal}%</p>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sky-400 font-black text-base">🔬 Ración para sistema {SISTEMAS[resultado.sistemaUsado].nombre}</div>
+              <Badge color="purple">{modo === "automatico" ? "Automático" : modo === "economico" ? "Económico" : "Personalizado"}</Badge>
+            </div>
+            <p className="text-zinc-500 text-xs mb-2">GDP esperado: {SISTEMAS[resultado.sistemaUsado].gdp} · Concentrado real: {resultado.pctConcReal}%</p>
             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Ingredientes — kg/día</div>
-            <div className="flex flex-col gap-2 mb-4">{r.racion.map((al,i)=>(<div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"><div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div><div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia<0.1?`${(al.kg_dia*1000).toFixed(0)} g`:`${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div></div>))}</div>
+            <div className="flex flex-col gap-2 mb-4">
+              {resultado.racion.map((al, i) => (
+                <div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3">
+                  <div><div className="text-white font-semibold text-sm">{al.nombre}</div><div className="text-zinc-500 text-xs">{TIPO_LABELS[al.tipo]}</div></div>
+                  <div className="text-right"><div className="text-emerald-400 font-black text-lg">{al.kg_dia < 0.1 ? `${(al.kg_dia * 1000).toFixed(0)} g` : `${al.kg_dia} kg`}</div><div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div></div>
+                </div>
+              ))}
+            </div>
             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Resumen nutricional</div>
             <div className="grid grid-cols-2 gap-2 mb-3">
-              {[{l:"MS total",v:`${r.ms_total} kg`,sub:`${r.ms_pct_pv}% PV`},{l:"FDN",v:`${r.fdn_pct}%`,sub:"mín 35%"},{l:"EM aportada",v:`${r.em_total} Mcal`,sub:`req: ${r.req.em_total.toFixed(2)}`},{l:"PB aportada",v:`${r.prot_total} g`,sub:`req: ${r.req.pb_total.toFixed(0)} g`},{l:"Costo/día",v:`Bs. ${r.costo_total}`},{l:"Costo/mes",v:`Bs. ${(parseFloat(r.costo_total)*30).toFixed(0)}`}].map(s=>(<div key={s.l} className="bg-zinc-800 rounded-xl p-3"><div className="font-bold text-sm text-emerald-400">{s.v}</div><div className="text-zinc-500 text-xs">{s.l}</div>{s.sub&&<div className="text-zinc-600 text-xs">{s.sub}</div>}</div>))}
+              {[
+                { l: "MS total", v: `${resultado.ms_total} kg`, sub: `${resultado.ms_pct_pv}% PV` },
+                { l: "FDN", v: `${resultado.fdn_pct}%`, sub: "mín 35%" },
+                { l: "EM aportada", v: `${resultado.em_total} Mcal`, sub: `req: ${resultado.req.em_total.toFixed(2)}` },
+                { l: "PB aportada", v: `${resultado.prot_total} g`, sub: `req: ${resultado.req.pb_total.toFixed(0)} g` },
+                { l: "Costo/día", v: `Bs. ${resultado.costo_total}` },
+                { l: "Costo/mes", v: `Bs. ${(parseFloat(resultado.costo_total) * 30).toFixed(0)}` }
+              ].map(s => (
+                <div key={s.l} className="bg-zinc-800 rounded-xl p-3">
+                  <div className="font-bold text-sm text-emerald-400">{s.v}</div>
+                  <div className="text-zinc-500 text-xs">{s.l}</div>
+                  {s.sub && <div className="text-zinc-600 text-xs">{s.sub}</div>}
+                </div>
+              ))}
             </div>
             <div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5">
               <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>
-              {[{l:"Energía",v:r.balance_em,u:"Mcal"},{l:"Proteína",v:r.balance_prot,u:"g"}].map(b=>{const ok=parseFloat(b.v)>=-0.5;return <div key={b.l} className="flex justify-between items-center"><span className="text-zinc-400 text-sm">{b.l}</span><Badge color={ok?"green":"red"}>{parseFloat(b.v)>0?"+":""}{b.v} {b.u}</Badge></div>;})}
+              {[
+                { l: "Energía", v: resultado.balance_em, u: "Mcal" },
+                { l: "Proteína", v: resultado.balance_prot, u: "g" }
+              ].map(b => {
+                const ok = parseFloat(b.v) >= -0.5;
+                return (
+                  <div key={b.l} className="flex justify-between items-center">
+                    <span className="text-zinc-400 text-sm">{b.l}</span>
+                    <Badge color={ok ? "green" : "red"}>{parseFloat(b.v) > 0 ? "+" : ""}{b.v} {b.u}</Badge>
+                  </div>
+                );
+              })}
             </div>
           </Card>
-          {(parseFloat(r.balance_em) < -1.0 || parseFloat(r.balance_prot) < -80) && (
-            <Card className="border-amber-700/50 bg-amber-950/30"><div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div><p className="text-zinc-400 text-xs">{parseFloat(r.balance_em) < -1.0?"Déficit de energía → agregá maíz, sorgo o melaza. ":""}{parseFloat(r.balance_prot) < -80?"Déficit de proteína → agregá torta de soya o harina de carne.":""}</p></Card>
+          {(parseFloat(resultado.balance_em) < -1.0 || parseFloat(resultado.balance_prot) < -80) && (
+            <Card className="border-amber-700/50 bg-amber-950/30">
+              <div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div>
+              <p className="text-zinc-400 text-xs">
+                {parseFloat(resultado.balance_em) < -1.0 ? "Déficit de energía → agregá maíz, sorgo o melaza. " : ""}
+                {parseFloat(resultado.balance_prot) < -80 ? "Déficit de proteína → agregá torta de soya o harina de carne." : ""}
+              </p>
+            </Card>
           )}
-        </div>);
-      })()}
+        </div>
+      )}
     </div>
   );
 }
@@ -699,89 +856,93 @@ function CalculadoraRacion({preciosUsr, customAl, minsAlimentos}) {
 // APP PRINCIPAL
 // ============================================================
 export default function App() {
-  const [user,sU]=useState(null);
-  const [authLoading,sAL]=useState(true);
-  const [nav,sN]=useState("dashboard");
-  const [animales,sA]=useState([]);
-  const [animalSel,sAS]=useState(null);
-  const [preciosUsr,sPU]=useState({});
-  const [customAl,sCA]=useState([]);
-  const [minsAlimentos, sMins] = useState({});
-  const [dataLoading,sDL]=useState(false);
-
-  const isAdmin=user?.email===ADMIN_EMAIL;
-  const uid=user?.uid;
-
-  useEffect(()=>{
-    const unsub=onAuthStateChanged(auth,(u)=>{ sU(u); sAL(false); });
-    return()=>unsub();
-  },[]);
-
-  useEffect(()=>{
-    if(!uid){sA([]);sPU({});sCA([]);sMins({});return;}
-    const cargar=async()=>{
-      sDL(true);
-      try{
-        const animSnap=await getDocs(userCol(uid,"animales"));
-        sA(animSnap.docs.map(d=>({_id:d.id,...d.data()})));
-        const precSnap=await getDocs(userCol(uid,"precios"));
-        const precios={};
-        precSnap.docs.forEach(d=>{precios[d.id]=d.data().valor;});
-        sPU(precios);
-        const alSnap=await getDocs(userCol(uid,"alimentos_custom"));
-        sCA(alSnap.docs.map(d=>({_id:d.id,id:d.id,...d.data()})));
-        const minsSnap=await getDocs(userCol(uid,"minimos"));
-        const mins={};
-        minsSnap.docs.forEach(d=>{mins[d.id]=d.data().valor;});
-        sMins(mins);
-      }catch(e){console.error(e);}
-      sDL(false);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [nav, setNav] = useState("dashboard");
+  const [animales, setAnimales] = useState([]);
+  const [animalSel, setAnimalSel] = useState(null);
+  const [preciosUsr, setPreciosUsr] = useState({});
+  const [customAl, setCustomAl] = useState([]);
+  const [minsAlimentos, setMinsAlimentos] = useState({});
+  const [dataLoading, setDataLoading] = useState(false);
+  
+  const isAdmin = user?.email === ADMIN_EMAIL;
+  const uid = user?.uid;
+  
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setAuthLoading(false); });
+    return () => unsub();
+  }, []);
+  
+  useEffect(() => {
+    if (!uid) { setAnimales([]); setPreciosUsr({}); setCustomAl([]); setMinsAlimentos({}); return; }
+    const cargar = async () => {
+      setDataLoading(true);
+      try {
+        const animSnap = await getDocs(userCol(uid, "animales"));
+        setAnimales(animSnap.docs.map(d => ({ _id: d.id, ...d.data() })));
+        const precSnap = await getDocs(userCol(uid, "precios"));
+        const precios = {};
+        precSnap.docs.forEach(d => { precios[d.id] = d.data().valor; });
+        setPreciosUsr(precios);
+        const alSnap = await getDocs(userCol(uid, "alimentos_custom"));
+        setCustomAl(alSnap.docs.map(d => ({ _id: d.id, id: d.id, ...d.data() })));
+        const minsSnap = await getDocs(userCol(uid, "minimos"));
+        const mins = {};
+        minsSnap.docs.forEach(d => { mins[d.id] = d.data().valor; });
+        setMinsAlimentos(mins);
+      } catch(e) { console.error(e); }
+      setDataLoading(false);
     };
     cargar();
-  },[uid]);
-
-  const handlePrecio=async(id,val)=>{
-    await setDoc(userDoc(uid,"precios",id),{valor:val,updatedAt:new Date()});
-    sPU(p=>({...p,[id]:val}));
+  }, [uid]);
+  
+  const handlePrecio = async (id, val) => {
+    await setDoc(userDoc(uid, "precios", id), { valor: val, updatedAt: new Date() });
+    setPreciosUsr(p => ({ ...p, [id]: val }));
   };
-  const handleSetMinimo=async(id,val)=>{
-    if(val===0){
-      await deleteDoc(userDoc(uid,"minimos",id)).catch(()=>{});
-      const newMins = {...minsAlimentos};
+  const handleSetMinimo = async (id, val) => {
+    if (val === 0) {
+      await deleteDoc(userDoc(uid, "minimos", id)).catch(() => {});
+      const newMins = { ...minsAlimentos };
       delete newMins[id];
-      sMins(newMins);
+      setMinsAlimentos(newMins);
     } else {
-      await setDoc(userDoc(uid,"minimos",id),{valor:val,updatedAt:new Date()});
-      sMins(m=>({...m,[id]:val}));
+      await setDoc(userDoc(uid, "minimos", id), { valor: val, updatedAt: new Date() });
+      setMinsAlimentos(m => ({ ...m, [id]: val }));
     }
   };
-  const handleUpdateAnimal=(a)=>{sA(p=>p.map(x=>x._id===a._id?a:x));sAS(a);};
-  const handleDeleteAnimal=(id)=>{sA(p=>p.filter(x=>x._id!==id));sN("animales");sAS(null);};
-  const handleSalir=async()=>{await signOut(auth);sN("dashboard");};
-
-  const navItems=[{id:"dashboard",i:"🏠",l:"Inicio"},{id:"animales",i:"🐄",l:"Animales"},{id:"racion",i:"🔬",l:"Ración"},{id:"alimentos",i:"📦",l:"Alimentos"}];
-
-  if(authLoading)return(<div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando...</p></div></div>);
-  if(!user)return <LoginScreen/>;
-  if(dataLoading)return(<div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando tus datos...</p></div></div>);
-
-  return(
+  const handleUpdateAnimal = (a) => { setAnimales(p => p.map(x => x._id === a._id ? a : x)); setAnimalSel(a); };
+  const handleDeleteAnimal = (id) => { setAnimales(p => p.filter(x => x._id !== id)); setNav("animales"); setAnimalSel(null); };
+  const handleSalir = async () => { await signOut(auth); setNav("dashboard"); };
+  
+  const navItems = [{ id: "dashboard", i: "🏠", l: "Inicio" }, { id: "animales", i: "🐄", l: "Animales" }, { id: "racion", i: "🔬", l: "Ración" }, { id: "alimentos", i: "📦", l: "Alimentos" }];
+  
+  if (authLoading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando...</p></div></div>;
+  if (!user) return <LoginScreen />;
+  if (dataLoading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando tus datos...</p></div></div>;
+  
+  return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span>{isAdmin&&<Badge color="purple">👑</Badge>}</div>
+        <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span>{isAdmin && <Badge color="purple">👑</Badge>}</div>
         <button onClick={handleSalir} className="text-zinc-500 text-xs hover:text-zinc-300 transition-colors">Salir</button>
       </div>
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
-        {nav==="dashboard"&&<Dashboard animales={animales} onNav={sN} isAdmin={isAdmin}/>}
-        {nav==="animales"&&<ListaAnimales animales={animales} onSelect={a=>{sAS(a);sN("detalle");}} onNav={sN}/>}
-        {nav==="nuevo"&&<NuevoAnimal onGuardar={a=>{sA(p=>[...p,a]);sN("animales");}} onBack={()=>sN("animales")} uid={uid}/>}
-        {nav==="detalle"&&animalSel&&<DetalleAnimal animal={animalSel} onUpdate={handleUpdateAnimal} onDelete={handleDeleteAnimal} onBack={()=>sN("animales")} preciosUsr={preciosUsr} uid={uid}/>}
-        {nav==="racion"&&<CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl} minsAlimentos={minsAlimentos}/>}
-        {nav==="alimentos"&&<GestionAlimentos preciosUsr={preciosUsr} onPrecio={handlePrecio} customAl={customAl} onAddCustom={a=>sCA(p=>[...p,a])} uid={uid} minsAlimentos={minsAlimentos} onSetMinimo={handleSetMinimo}/>}
-        {nav==="perfil"&&<PerfilUsuario user={user} onBack={()=>sN("dashboard")}/>}
+        {nav === "dashboard" && <Dashboard animales={animales} onNav={setNav} isAdmin={isAdmin} />}
+        {nav === "animales" && <ListaAnimales animales={animales} onSelect={a => { setAnimalSel(a); setNav("detalle"); }} onNav={setNav} />}
+        {nav === "nuevo" && <NuevoAnimal onGuardar={a => { setAnimales(p => [...p, a]); setNav("animales"); }} onBack={() => setNav("animales")} uid={uid} />}
+        {nav === "detalle" && animalSel && <DetalleAnimal animal={animalSel} onUpdate={handleUpdateAnimal} onDelete={handleDeleteAnimal} onBack={() => setNav("animales")} preciosUsr={preciosUsr} uid={uid} />}
+        {nav === "racion" && <CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl} minsAlimentos={minsAlimentos} />}
+        {nav === "alimentos" && <GestionAlimentos preciosUsr={preciosUsr} onPrecio={handlePrecio} customAl={customAl} onAddCustom={a => setCustomAl(p => [...p, a])} uid={uid} minsAlimentos={minsAlimentos} onSetMinimo={handleSetMinimo} />}
+        {nav === "perfil" && <PerfilUsuario user={user} onBack={() => setNav("dashboard")} />}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 flex">
-        {navItems.map(item=>(<button key={item.id} onClick={()=>sN(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav===item.id||(nav==="detalle"&&item.id==="animales")?"text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}><span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span></button>))}
+        {navItems.map(item => (
+          <button key={item.id} onClick={() => setNav(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav === item.id || (nav === "detalle" && item.id === "animales") ? "text-emerald-400" : "text-zinc-600 hover:text-zinc-400"}`}>
+            <span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
