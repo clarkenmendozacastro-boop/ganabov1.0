@@ -96,7 +96,6 @@ const ALIMENTOS_BASE = [
   { id:"cebada_grano", nombre:"Cebada (grano)", tipo:"energetico", ms:88, prot:11.5, em:3.05, fdn:18, max_ms_pct:30, precio_kg:2.50 },
   { id:"trigo_grano", nombre:"Trigo (grano)", tipo:"energetico", ms:88, prot:12.5, em:3.20, fdn:13, max_ms_pct:30, precio_kg:2.80 },
   { id:"yuca_seca", nombre:"Yuca Seca (chips)", tipo:"energetico", ms:88, prot:2.8, em:3.10, fdn:10, max_ms_pct:30, precio_kg:1.50 },
-  { id:"yuca_fresca", nombre:"Yuca Raíz (fresca)", tipo:"energetico", ms:35, prot:2.5, em:3.00, fdn:10, max_ms_pct:30, precio_kg:0.90 },
   { id:"melaza", nombre:"Melaza de Caña", tipo:"energetico", ms:74, prot:3.5, em:2.60, fdn:0, max_ms_pct:10, precio_kg:1.20 },
   { id:"grasa_bypass", nombre:"Grasa Bypass", tipo:"energetico", ms:99, prot:0.0, em:5.60, fdn:0, max_ms_pct:5, precio_kg:12.0 },
   { id:"arroz_pulido", nombre:"Arroz Pulido (quebrado)", tipo:"energetico", ms:88, prot:7.0, em:3.25, fdn:10, max_ms_pct:40, precio_kg:2.30 },
