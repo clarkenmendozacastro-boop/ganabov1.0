@@ -13,7 +13,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
-  const [modo, setModo] = useState("automatico"); // "automatico" (óptimo), "economico", "personalizado"
+  const [modo, setModo] = useState("automatico");
   const [selIds, setSelIds] = useState(new Set());
   const [busq, setBusq] = useState("");
   const [resultado, setResultado] = useState(null);
@@ -46,60 +46,61 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
       if (seleccionados.length === 0) return alert("Seleccione al menos un alimento en modo personalizado.");
       alimentosUsar = seleccionados;
     } else {
-      // Modo automático o económico: usar TODOS los alimentos disponibles
-      alimentosUsar = todosAl.filter(
-        (a) => a.tipo !== "suplemento" // los suplementos se agregan automáticamente por el motor
-      );
+      // Modo automático o económico: usar TODOS los alimentos (excepto suplementos, que el motor ya maneja)
+      alimentosUsar = todosAl.filter((a) => a.tipo !== "suplemento");
     }
 
-    // Mapeo de modo: "automatico" -> "óptimo", "economico" -> "económico"
-    const modoMotor = modo === "automatico" ? "óptimo" : modo === "economico" ? "económico" : "óptimo";
+    const modoMotor = modo === "automatico" ? "óptimo" : "económico";
 
-    const resultadoMotor = formularRacionInteligente({
+    const result = formularRacionInteligente({
       pv: peso,
       sistemaId: sistema,
       alimentosDisponibles: alimentosUsar,
       preciosUsuario: preciosUsr,
-      estadosCalidad: {}, // Podrías añadir calidades si las tuvieras
+      estadosCalidad: {}, // Opcional: se puede expandir para calidades
       modo: modoMotor,
     });
 
-    if (resultadoMotor.error) {
-      alert(resultadoMotor.msg);
+    if (result.error) {
+      alert(result.msg);
       setResultado(null);
       return;
     }
 
-    // Transformar al formato que espera la UI
+    // Calcular requerimientos para el animal (para mostrar balances)
     const req = calcularRequerimientos(peso, razaObj, sistema);
+
+    // Transformar al formato de la UI
+    const racionFormateada = result.racion.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      tipo: r.categoria,
+      kg_dia: r.kg_dia,
+      ms_kg: r.ms_kg,
+      precio_kg: r.precio_total / r.kg_dia,
+    }));
+
     setResultado({
-      racion: resultadoMotor.racion.map((r) => ({
-        id: r.id,
-        nombre: r.nombre,
-        tipo: r.categoria,
-        kg_dia: r.kg_dia,
-        ms_kg: r.ms_kg,
-        precio_kg: r.precio_total / r.kg_dia,
-      })),
+      racion: racionFormateada,
       req,
-      ms_total: resultadoMotor.indicadores.ms_total_kg.toFixed(2),
-      ms_pct_pv: resultadoMotor.indicadores.ms_pct_pv,
-      em_total: resultadoMotor.indicadores.em_aportada.toFixed(2),
-      prot_total: resultadoMotor.indicadores.pb_aportada.toFixed(0),
-      fdn_pct: resultadoMotor.indicadores.fdn_pct,
-      costo_total: resultadoMotor.indicadores.costo_dia.toFixed(2),
-      balance_em: (resultadoMotor.indicadores.em_aportada - req.em_total).toFixed(2),
-      balance_prot: (resultadoMotor.indicadores.pb_aportada - req.pb_total).toFixed(0),
-      alertas: resultadoMotor.alertas,
-      metodo: "NRC+IA",
-      alertaAcidosis: resultadoMotor.indicadores.fdn_pct < 35,
+      ms_total: result.indicadores.ms_total_kg.toFixed(2),
+      ms_pct_pv: result.indicadores.ms_pct_pv,
+      em_total: result.indicadores.em_aportada.toFixed(2),
+      prot_total: result.indicadores.pb_aportada.toFixed(0),
+      fdn_pct: result.indicadores.fdn_pct,
+      costo_total: result.indicadores.costo_dia.toFixed(2),
+      balance_em: (result.indicadores.em_aportada - req.em_total).toFixed(2),
+      balance_prot: (result.indicadores.pb_aportada - req.pb_total).toFixed(0),
+      alertas: result.alertas,
+      metodo: "NRC+IA (Motor Inteligente)",
+      alertaAcidosis: result.indicadores.fdn_pct < 35,
       alertaPastoFresco: false,
     });
   };
 
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración (Motor Inteligente)</h2>
+      <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración - Motor Inteligente</h2>
       <Card className="flex flex-col gap-4">
         <Inp
           label="Peso vivo (kg)"
@@ -118,6 +119,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
             </option>
           ))}
         </Sel>
+
         <div>
           <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
             Sistema de producción
@@ -155,6 +157,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
             </button>
           </div>
         </div>
+
         <div>
           <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
             Modo de formulación
@@ -192,9 +195,11 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
             </button>
           </div>
           <p className="text-zinc-400 text-xs mt-2">
-            {modo === "automatico" && "El motor elige los mejores ingredientes para maximizar ganancia, respetando límites biológicos."}
-            {modo === "economico" && "El motor prioriza el menor costo, manteniendo requerimientos mínimos."}
-            {modo === "personalizado" && "Seleccioná manualmente los alimentos que quieras incluir."}
+            {modo === "automatico" &&
+              "El motor selecciona los mejores ingredientes para maximizar ganancia, respetando límites biológicos."}
+            {modo === "economico" &&
+              "Prioriza el menor costo, manteniendo los requerimientos nutricionales mínimos."}
+            {modo === "personalizado" && "Elige manualmente los alimentos que quieras incluir."}
           </p>
         </div>
 
@@ -277,7 +282,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
           <Card>
             <div className="flex items-center justify-between mb-1">
               <div className="text-sky-400 font-black text-base">🔬 Ración formulada</div>
-              <Badge color="purple">Motor Inteligente NRC</Badge>
+              <Badge color="purple">{resultado.metodo}</Badge>
             </div>
             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
               Ingredientes — kg/día
