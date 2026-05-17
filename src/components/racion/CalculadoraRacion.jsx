@@ -7,13 +7,13 @@ import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { ALIMENTOS_BASE, TIPOS_ORDER, TIPO_LABELS } from "../../data/alimentosBase";
 import { RAZAS } from "../../data/razas";
-import { calcularRequerimientos, formularRacionConIngredientes } from "../../utils/nutricion";
+import { formularRacionInteligente, calcularRequerimientos } from "../../utils/nutricion";
 
 const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
-  const [modo, setModo] = useState("automatico");
+  const [modo, setModo] = useState("automatico"); // "automatico" (óptimo), "economico", "personalizado"
   const [selIds, setSelIds] = useState(new Set());
   const [busq, setBusq] = useState("");
   const [resultado, setResultado] = useState(null);
@@ -40,51 +40,66 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
 
   const calcular = () => {
     if (!peso || parseFloat(peso) < 80) return alert("Peso mínimo 80 kg");
-    if (modo === "personalizado" && seleccionados.length === 0)
-      return alert("Seleccione al menos un alimento en modo personalizado.");
 
-    let forrajesUsar = [];
-    let concentradosUsar = [];
-
-    if (modo === "automatico") {
-      // Selecciona los mejores ingredientes (por energía/proteína y costo)
-      const todosForrajes = todosAl.filter((a) => a.tipo === "forraje_fresco" || a.tipo === "heno_silo");
-      const todosEnergeticos = todosAl.filter((a) => a.tipo === "energetico");
-      const todosProteicos = todosAl.filter((a) => a.tipo === "proteico" || a.tipo === "proteico_animal");
-      if (todosForrajes.length) forrajesUsar = [todosForrajes.sort((a, b) => b.em - a.em)[0]];
-      if (todosEnergeticos.length) concentradosUsar.push(todosEnergeticos.sort((a, b) => b.em - a.em)[0]);
-      if (todosProteicos.length) concentradosUsar.push(todosProteicos.sort((a, b) => b.prot - a.prot)[0]);
-    } else if (modo === "economico") {
-      const todosForrajes = todosAl.filter((a) => a.tipo === "forraje_fresco" || a.tipo === "heno_silo");
-      const todosEnergeticos = todosAl.filter((a) => a.tipo === "energetico");
-      const todosProteicos = todosAl.filter((a) => a.tipo === "proteico" || a.tipo === "proteico_animal");
-      if (todosForrajes.length) forrajesUsar = [todosForrajes.sort((a, b) => (preciosUsr[a.id] ?? a.precio_kg) - (preciosUsr[b.id] ?? b.precio_kg))[0]];
-      if (todosEnergeticos.length) concentradosUsar.push(todosEnergeticos.sort((a, b) => (preciosUsr[a.id] ?? a.precio_kg) - (preciosUsr[b.id] ?? b.precio_kg))[0]);
-      if (todosProteicos.length) concentradosUsar.push(todosProteicos.sort((a, b) => (preciosUsr[a.id] ?? a.precio_kg) - (preciosUsr[b.id] ?? b.precio_kg))[0]);
+    let alimentosUsar = [];
+    if (modo === "personalizado") {
+      if (seleccionados.length === 0) return alert("Seleccione al menos un alimento en modo personalizado.");
+      alimentosUsar = seleccionados;
     } else {
-      forrajesUsar = seleccionados.filter((a) => a.tipo === "forraje_fresco" || a.tipo === "heno_silo");
-      concentradosUsar = seleccionados.filter((a) =>
-        ["energetico", "proteico", "proteico_animal", "subproducto"].includes(a.tipo)
+      // Modo automático o económico: usar TODOS los alimentos disponibles
+      alimentosUsar = todosAl.filter(
+        (a) => a.tipo !== "suplemento" // los suplementos se agregan automáticamente por el motor
       );
-      if (forrajesUsar.length === 0 && concentradosUsar.length === 0)
-        return alert("Debe seleccionar al menos un forraje o un concentrado.");
     }
 
-    const res = formularRacionConIngredientes(
-      forrajesUsar,
-      concentradosUsar,
-      peso,
-      razaObj,
-      sistema,
-      preciosUsr,
-      minsAlimentos
-    );
-    setResultado(res);
+    // Mapeo de modo: "automatico" -> "óptimo", "economico" -> "económico"
+    const modoMotor = modo === "automatico" ? "óptimo" : modo === "economico" ? "económico" : "óptimo";
+
+    const resultadoMotor = formularRacionInteligente({
+      pv: peso,
+      sistemaId: sistema,
+      alimentosDisponibles: alimentosUsar,
+      preciosUsuario: preciosUsr,
+      estadosCalidad: {}, // Podrías añadir calidades si las tuvieras
+      modo: modoMotor,
+    });
+
+    if (resultadoMotor.error) {
+      alert(resultadoMotor.msg);
+      setResultado(null);
+      return;
+    }
+
+    // Transformar al formato que espera la UI
+    const req = calcularRequerimientos(peso, razaObj, sistema);
+    setResultado({
+      racion: resultadoMotor.racion.map((r) => ({
+        id: r.id,
+        nombre: r.nombre,
+        tipo: r.categoria,
+        kg_dia: r.kg_dia,
+        ms_kg: r.ms_kg,
+        precio_kg: r.precio_total / r.kg_dia,
+      })),
+      req,
+      ms_total: resultadoMotor.indicadores.ms_total_kg.toFixed(2),
+      ms_pct_pv: resultadoMotor.indicadores.ms_pct_pv,
+      em_total: resultadoMotor.indicadores.em_aportada.toFixed(2),
+      prot_total: resultadoMotor.indicadores.pb_aportada.toFixed(0),
+      fdn_pct: resultadoMotor.indicadores.fdn_pct,
+      costo_total: resultadoMotor.indicadores.costo_dia.toFixed(2),
+      balance_em: (resultadoMotor.indicadores.em_aportada - req.em_total).toFixed(2),
+      balance_prot: (resultadoMotor.indicadores.pb_aportada - req.pb_total).toFixed(0),
+      alertas: resultadoMotor.alertas,
+      metodo: "NRC+IA",
+      alertaAcidosis: resultadoMotor.indicadores.fdn_pct < 35,
+      alertaPastoFresco: false,
+    });
   };
 
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración</h2>
+      <h2 className="text-2xl font-black text-white">🔬 Formulación de Ración (Motor Inteligente)</h2>
       <Card className="flex flex-col gap-4">
         <Inp
           label="Peso vivo (kg)"
@@ -153,7 +168,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
                   : "bg-zinc-800 border-zinc-600 text-zinc-400"
               }`}
             >
-              🚀 Automático
+              🚀 Automático (óptimo)
             </button>
             <button
               onClick={() => setModo("economico")}
@@ -176,7 +191,13 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
               ✏️ Personalizado
             </button>
           </div>
+          <p className="text-zinc-400 text-xs mt-2">
+            {modo === "automatico" && "El motor elige los mejores ingredientes para maximizar ganancia, respetando límites biológicos."}
+            {modo === "economico" && "El motor prioriza el menor costo, manteniendo requerimientos mínimos."}
+            {modo === "personalizado" && "Seleccioná manualmente los alimentos que quieras incluir."}
+          </p>
         </div>
+
         {modo === "personalizado" && (
           <div className="flex flex-col gap-3">
             <Btn variant="secondary" onClick={() => setShowSel(!showSel)}>
@@ -239,10 +260,12 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
             )}
           </div>
         )}
+
         <Btn onClick={calcular} className="w-full py-3 text-base">
           Calcular Ración
         </Btn>
       </Card>
+
       {resultado && (
         <div className="flex flex-col gap-3">
           {resultado.alertas && resultado.alertas.length > 0 &&
@@ -254,7 +277,7 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
           <Card>
             <div className="flex items-center justify-between mb-1">
               <div className="text-sky-400 font-black text-base">🔬 Ración formulada</div>
-              <Badge color="purple">NRC+IA</Badge>
+              <Badge color="purple">Motor Inteligente NRC</Badge>
             </div>
             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
               Ingredientes — kg/día
