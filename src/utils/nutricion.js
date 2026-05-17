@@ -44,7 +44,7 @@ function calcularRequerimientosNRC(pv, sistemaId, gdpDeseada = null) {
 }
 
 // ============================================================
-// MOTOR DE FORMULACIÓN INTELIGENTE (¡EL QUE ME DISTE!)
+// MOTOR DE FORMULACIÓN INTELIGENTE (PRINCIPAL)
 // ============================================================
 export function formularRacionInteligente({
   pv,
@@ -231,7 +231,7 @@ export function formularRacionInteligente({
 }
 
 // ============================================================
-// WRAPPER PARA COMPATIBILIDAD CON LA UI (MANTIENE MISMA ESTRUCTURA)
+// FUNCIÓN AUXILIAR PARA LA UI (CALCULAR REQUERIMIENTOS)
 // ============================================================
 export function calcularRequerimientos(pv, razaObj, sistemaId = "semiIntensivo") {
   const req = calcularRequerimientosNRC(parseFloat(pv), sistemaId);
@@ -244,55 +244,5 @@ export function calcularRequerimientos(pv, razaObj, sistemaId = "semiIntensivo")
     gdp: req.gdp,
     pvN: parseFloat(pv),
     sistemaId,
-  };
-}
-
-// Función unificada para la UI: recibe listas de forrajes y concentrados, pero internamente usa el motor inteligente
-export function formularRacionConIngredientes(
-  forrajesSeleccionados,
-  concentradosSeleccionados,
-  pv,
-  razaObj,
-  sistemaId,
-  preciosUsr = {},
-  minsPersonalizados = {} // no se usa en este motor, pero se deja por compatibilidad
-) {
-  // Unimos forrajes y concentrados para pasarlos al motor
-  const todosAlimentos = [...forrajesSeleccionados, ...concentradosSeleccionados];
-  // Determinamos el modo según algún criterio (podría venir de la UI, aquí lo dejamos fijo como "óptimo" pero la UI lo controla)
-  // En la nueva CalculadoraRacion usaremos directamente formularRacionInteligente, así que este wrapper puede quedar simple.
-  const modo = "óptimo"; // por defecto
-  const resultado = formularRacionInteligente({
-    pv,
-    sistemaId,
-    alimentosDisponibles: todosAlimentos,
-    preciosUsuario: preciosUsr,
-    estadosCalidad: {},
-    modo,
-  });
-  if (resultado.error) return null;
-  const req = calcularRequerimientos(pv, razaObj, sistemaId);
-  return {
-    racion: resultado.racion.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      tipo: r.categoria,
-      kg_dia: r.kg_dia,
-      ms_kg: r.ms_kg,
-      precio_kg: r.precio_total / r.kg_dia,
-    })),
-    req,
-    ms_total: resultado.indicadores.ms_total_kg.toFixed(2),
-    ms_pct_pv: resultado.indicadores.ms_pct_pv,
-    em_total: resultado.indicadores.em_aportada.toFixed(2),
-    prot_total: resultado.indicadores.pb_aportada.toFixed(0),
-    fdn_pct: resultado.indicadores.fdn_pct.toFixed(1),
-    costo_total: resultado.indicadores.costo_dia.toFixed(2),
-    balance_em: (resultado.indicadores.em_aportada - req.em_total).toFixed(2),
-    balance_prot: (resultado.indicadores.pb_aportada - req.pb_total).toFixed(0),
-    alertas: resultado.alertas,
-    metodo: "NRC+IA",
-    alertaAcidosis: resultado.indicadores.fdn_pct < 35,
-    alertaPastoFresco: false,
   };
 }
