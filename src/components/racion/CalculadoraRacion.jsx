@@ -25,7 +25,6 @@ const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
       a.nombre.toLowerCase().includes(busq.toLowerCase()) ||
       (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase())
   );
-  const razaObj = RAZAS.find((r) => r.id === raza) || RAZAS[8];
   const seleccionados = todosAl.filter((a) => selIds.has(a.id));
 
   const toggleSeleccion = (id) => {
