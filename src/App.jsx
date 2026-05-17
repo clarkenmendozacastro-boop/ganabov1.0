@@ -1,12 +1,20 @@
-// src/App.jsx
-import React from "react";
-import { useAuthState } from "react-firebase-hooks/auth";
+import React, { useState, useEffect } from "react";
 import { auth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import Home from "./pages/Home";
 import LoginScreen from "./components/auth/LoginScreen";
 
 function App() {
-  const [user, loading] = useAuthState(auth);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
 
   if (loading) {
     return (
