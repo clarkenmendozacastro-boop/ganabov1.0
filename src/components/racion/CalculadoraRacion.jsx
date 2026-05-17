@@ -5,21 +5,11 @@ import Inp from "../ui/Inp";
 import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
-import { ALIMENTOS_BASE, TIPOS_ORDER, TIPO_LABELS } from "../../data/alimentosBase";
+import { ALIMENTOS_BASE, CATEGORIAS_ORDER, TIPO_LABELS } from "../../data/alimentosBase";
 import { RAZAS } from "../../data/razas";
-import { formularRacionInteligente, calcularRequerimientos } from "../../utils/nutricion";
+import { formularRacionInteligente, calcularRequerimientosNRC } from "../../utils/nutricion";
 
-// Respaldos locales obligatorios por si no vienen exportados en alimentosBase.js
-const TIPOS_ORDENADOS = TIPOS_ORDER || ["forraje_fresco", "heno_silo", "energetico", "proteico", "suplemento"];
-const LABELS_LOCALES = TIPO_LABELS || {
-  forraje_fresco: "Forraje Fresco",
-  heno_silo: "Heno o Silo",
-  energetico: "Concentrado Energético",
-  proteico: "Concentrado Proteico",
-  suplemento: "Minerales / Suplementos"
-};
-
-const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} }) => {
+const CalculadoraRacion = ({ preciosUsr, customAl, minsAlimentos }) => {
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
@@ -29,13 +19,13 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
   const [resultado, setResultado] = useState(null);
   const [showSel, setShowSel] = useState(false);
 
-  const todosAl = [...ALIMENTOS_BASE, ...(customAl || [])];
+  const todosAl = [...ALIMENTOS_BASE, ...customAl];
   const filtrados = todosAl.filter(
     (a) =>
       a.nombre.toLowerCase().includes(busq.toLowerCase()) ||
-      (LABELS_LOCALES[a.tipo] || "").toLowerCase().includes(busq.toLowerCase())
+      (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase())
   );
-  const razaObj = RAZAS.find((r) => r.id === raza) || RAZAS[8] || { nombre: "General" };
+  const razaObj = RAZAS.find((r) => r.id === raza) || RAZAS[8];
   const seleccionados = todosAl.filter((a) => selIds.has(a.id));
 
   const toggleSeleccion = (id) => {
@@ -56,59 +46,48 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
       if (seleccionados.length === 0) return alert("Seleccione al menos un alimento en modo personalizado.");
       alimentosUsar = seleccionados;
     } else {
-      alimentosUsar = todosAl.filter((a) => a.tipo !== "suplemento");
+      alimentosUsar = todosAl;
     }
 
     const modoMotor = modo === "automatico" ? "óptimo" : "económico";
 
-    try {
-      const result = formularRacionInteligente({
-        pv: peso,
-        sistemaId: sistema,
-        alimentosDisponibles: alimentosUsar,
-        preciosUsuario: preciosUsr,
-        estadosCalidad: {},
-        modo: modoMotor,
-      });
+    const result = formularRacionInteligente({
+      pv: peso,
+      sistemaId: sistema,
+      alimentosDisponibles: alimentosUsar,
+      preciosUsuario: preciosUsr,
+      estadosCalidad: {},
+      modo: modoMotor,
+    });
 
-      if (result.error) {
-        alert(result.msg);
-        setResultado(null);
-        return;
-      }
-
-      const req = calcularRequerimientos(peso, razaObj, sistema);
-
-      // CORRECCIÓN DE SEGURIDAD: Evita la división por cero si kg_dia es insignificante
-      const racionFormateada = result.racion.map((r) => ({
-        id: r.id,
-        nombre: r.nombre,
-        tipo: r.categoria,
-        kg_dia: r.kg_dia,
-        ms_kg: r.ms_kg,
-        precio_kg: r.kg_dia > 0 ? (r.precio_total / r.kg_dia) : 0,
-      }));
-
-      setResultado({
-        racion: racionFormateada,
-        req,
-        ms_total: result.indicadores.ms_total_kg.toFixed(2),
-        ms_pct_pv: result.indicadores.ms_pct_pv,
-        em_total: result.indicadores.em_aportada.toFixed(2),
-        prot_total: result.indicadores.pb_aportada.toFixed(0),
-        fdn_pct: result.indicadores.fdn_pct,
-        costo_total: result.indicadores.costo_dia.toFixed(2),
-        balance_em: (result.indicadores.em_aportada - req.em_total).toFixed(2),
-        balance_prot: (result.indicadores.pb_aportada - req.pb_total).toFixed(0),
-        alertas: result.alertas,
-        metodo: "NRC+IA (Motor Inteligente)",
-        alertaAcidosis: result.indicadores.fdn_pct < 35,
-        alertaPastoFresco: false,
-      });
-    } catch (err) {
-      console.error("Error crítico en formulación:", err);
-      alert("Ocurrió un error inesperado al procesar el motor nutricional.");
+    if (result.error) {
+      alert(result.msg);
+      setResultado(null);
+      return;
     }
+
+    const req = calcularRequerimientosNRC(parseFloat(peso), sistema);
+
+    setResultado({
+      racion: result.racion,
+      req: {
+        em_total: req.em_total,
+        pb_total: req.pb_total,
+        ms_opt: req.cms_optimo,
+        ms_max: req.cms_maximo,
+      },
+      ms_total: result.indicadores.ms_total_kg.toFixed(2),
+      ms_pct_pv: result.indicadores.ms_pct_pv,
+      em_total: result.indicadores.em_aportada.toFixed(2),
+      prot_total: result.indicadores.pb_aportada.toFixed(0),
+      fdn_pct: result.indicadores.fdn_pct,
+      costo_total: result.indicadores.costo_dia.toFixed(2),
+      balance_em: (result.indicadores.em_aportada - req.em_total).toFixed(2),
+      balance_prot: (result.indicadores.pb_aportada - req.pb_total).toFixed(0),
+      alertas: result.alertas,
+      metodo: "Motor Inteligente GanaBov Pro",
+      alertaAcidosis: result.indicadores.fdn_pct < 35,
+    });
   };
 
   return (
@@ -126,7 +105,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
           placeholder="Ej: 280"
         />
         <Sel label="Raza" value={raza} onChange={(e) => setRaza(e.target.value)}>
-          {(RAZAS || []).map((r) => (
+          {RAZAS.map((r) => (
             <option key={r.id} value={r.id}>
               {r.nombre}
             </option>
@@ -138,21 +117,36 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             Sistema de producción
           </label>
           <div className="grid grid-cols-3 gap-2 mt-1">
-            {["extensivo", "semiIntensivo", "intensivo"].map((sys) => (
-              <button
-                key={sys}
-                onClick={() => setSistema(sys)}
-                className={`py-2 rounded-xl text-xs font-bold transition-all border ${
-                  sistema === sys
-                    ? "bg-emerald-600 border-emerald-500 text-white"
-                    : "bg-zinc-800 border-zinc-600 text-zinc-400"
-                }`}
-              >
-                {sys === "extensivo" && "🌾 Extensivo"}
-                {sys === "semiIntensivo" && "⚡ Semi-intensivo"}
-                {sys === "intensivo" && "🔥 Intensivo"}
-              </button>
-            ))}
+            <button
+              onClick={() => setSistema("pastoril")}
+              className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                sistema === "pastoril"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              🌾 Pastoril
+            </button>
+            <button
+              onClick={() => setSistema("semiIntensivo")}
+              className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                sistema === "semiIntensivo"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              ⚡ Semi-intensivo
+            </button>
+            <button
+              onClick={() => setSistema("feedlot")}
+              className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                sistema === "feedlot"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              🔥 Feedlot
+            </button>
           </div>
         </div>
 
@@ -161,22 +155,42 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             Modo de formulación
           </label>
           <div className="flex gap-2 mt-1">
-            {["automatico", "economico", "personalizado"].map((m) => (
-              <button
-                key={m}
-                onClick={() => setModo(m)}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
-                  modo === m
-                    ? "bg-emerald-600 border-emerald-500 text-white"
-                    : "bg-zinc-800 border-zinc-600 text-zinc-400"
-                }`}
-              >
-                {m === "automatico" && "🚀 Automático"}
-                {m === "economico" && "💰 Económico"}
-                {m === "personalizado" && "✏️ Personalizado"}
-              </button>
-            ))}
+            <button
+              onClick={() => setModo("automatico")}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
+                modo === "automatico"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              🚀 Automático (óptimo)
+            </button>
+            <button
+              onClick={() => setModo("economico")}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
+                modo === "economico"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              💰 Económico
+            </button>
+            <button
+              onClick={() => setModo("personalizado")}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${
+                modo === "personalizado"
+                  ? "bg-emerald-600 border-emerald-500 text-white"
+                  : "bg-zinc-800 border-zinc-600 text-zinc-400"
+              }`}
+            >
+              ✏️ Personalizado
+            </button>
           </div>
+          <p className="text-zinc-400 text-xs mt-2">
+            {modo === "automatico" && "El motor selecciona los mejores ingredientes para maximizar ganancia, respetando límites biológicos."}
+            {modo === "economico" && "Prioriza el menor costo, manteniendo los requerimientos nutricionales mínimos."}
+            {modo === "personalizado" && "Elige manualmente los alimentos que quieras incluir."}
+          </p>
         </div>
 
         {modo === "personalizado" && (
@@ -187,16 +201,16 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             {showSel && (
               <div className="flex flex-col gap-1">
                 <Inp placeholder="Buscar..." value={busq} onChange={(e) => setBusq(e.target.value)} />
-                {TIPOS_RECONSTRUIDOS.map((tipo) => {
-                  const gr = filtrados.filter((a) => a.tipo === tipo);
+                {CATEGORIAS_ORDER.map((cat) => {
+                  const gr = filtrados.filter((a) => a.categoria === cat);
                   if (!gr.length) return null;
                   return (
-                    <div key={tipo}>
+                    <div key={cat}>
                       <div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1 mt-3">
-                        {LABELS_LOCALES[tipo] || tipo}
+                        {TIPO_LABELS[cat]}
                       </div>
                       {gr.map((al) => {
-                        const minMostrar = minsAlimentos?.[al.id] || 0;
+                        const minMostrar = minsAlimentos[al.id] || 0;
                         return (
                           <button
                             key={al.id}
@@ -212,7 +226,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
                               <span>{selIds.has(al.id) ? "✓" : ""}</span>
                             </div>
                             <span className="text-zinc-500 text-xs">
-                              PB:{al.prot}% · EM:{al.em} · FDN:{al.fdn}% · Bs.
+                              MS:{al.ms}% · PB:{al.prot}% · EM:{al.em} · Bs.
                               {(preciosUsr[al.id] ?? al.precio_kg).toFixed(2)}/kg{" "}
                               {minMostrar > 0 && `· Mín: ${minMostrar} kg/día`}
                             </span>
@@ -222,6 +236,21 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {seleccionados.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {seleccionados.map((al) => (
+                  <span
+                    key={al.id}
+                    className="inline-flex items-center gap-1 bg-emerald-950/50 border border-emerald-700 text-emerald-300 text-xs px-2 py-0.5 rounded-full"
+                  >
+                    {al.nombre.split("(")[0].trim()}
+                    <button onClick={() => toggleSeleccion(al.id)} className="text-emerald-500 hover:text-red-400">
+                      ×
+                    </button>
+                  </span>
+                ))}
               </div>
             )}
           </div>
@@ -234,22 +263,26 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
 
       {resultado && (
         <div className="flex flex-col gap-3">
-          {resultado.alertas?.map((alerta, idx) => (
-            <Card key={idx} className="border-red-700/50 bg-red-950/30">
-              <div className="text-red-400 font-bold text-sm">{alerta}</div>
-            </Card>
-          ))}
+          {resultado.alertas && resultado.alertas.length > 0 &&
+            resultado.alertas.map((alerta, idx) => (
+              <Card key={idx} className="border-red-700/50 bg-red-950/30">
+                <div className="text-red-400 font-bold text-sm">{alerta}</div>
+              </Card>
+            ))}
           <Card>
             <div className="flex items-center justify-between mb-1">
               <div className="text-sky-400 font-black text-base">🔬 Ración formulada</div>
               <Badge color="purple">{resultado.metodo}</Badge>
+            </div>
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+              Ingredientes — kg/día
             </div>
             <div className="flex flex-col gap-2 mb-4">
               {resultado.racion.map((al, i) => (
                 <div key={i} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3">
                   <div>
                     <div className="text-white font-semibold text-sm">{al.nombre}</div>
-                    <div className="text-zinc-500 text-xs">{LABELS_LOCALES[al.tipo] || al.tipo}</div>
+                    <div className="text-zinc-500 text-xs">{TIPO_LABELS[al.categoria]}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-emerald-400 font-black text-lg">
@@ -260,26 +293,66 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
                 </div>
               ))}
             </div>
-            {/* Indicadores Nutricionales */}
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+              Resumen nutricional
+            </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="bg-zinc-800 rounded-xl p-3">
                 <div className="font-bold text-sm text-emerald-400">{resultado.ms_total} kg</div>
-                <div className="text-zinc-500 text-xs">MS total ({resultado.ms_pct_pv}% PV)</div>
+                <div className="text-zinc-500 text-xs">MS total</div>
+                <div className="text-zinc-600 text-xs">{resultado.ms_pct_pv}% PV</div>
               </div>
               <div className="bg-zinc-800 rounded-xl p-3">
                 <div className="font-bold text-sm text-emerald-400">{resultado.fdn_pct}%</div>
-                <div className="text-zinc-500 text-xs">FDN (mín 35%)</div>
+                <div className="text-zinc-500 text-xs">FDN</div>
+                <div className="text-zinc-600 text-xs">mín 35%</div>
               </div>
               <div className="bg-zinc-800 rounded-xl p-3">
                 <div className="font-bold text-sm text-emerald-400">{resultado.em_total} Mcal</div>
-                <div className="text-zinc-600 text-xs">req: {resultado.req?.em_total?.toFixed(1)}</div>
+                <div className="text-zinc-500 text-xs">EM aportada</div>
+                <div className="text-zinc-600 text-xs">req: {resultado.req.em_total.toFixed(2)}</div>
               </div>
               <div className="bg-zinc-800 rounded-xl p-3">
                 <div className="font-bold text-sm text-emerald-400">{resultado.prot_total} g</div>
-                <div className="text-zinc-600 text-xs">req: {resultado.req?.pb_total?.toFixed(0)} g</div>
+                <div className="text-zinc-500 text-xs">PB aportada</div>
+                <div className="text-zinc-600 text-xs">req: {resultado.req.pb_total.toFixed(0)} g</div>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-3">
+                <div className="font-bold text-sm text-emerald-400">Bs. {resultado.costo_total}</div>
+                <div className="text-zinc-500 text-xs">Costo/día</div>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-3">
+                <div className="font-bold text-sm text-emerald-400">Bs. {(parseFloat(resultado.costo_total) * 30).toFixed(0)}</div>
+                <div className="text-zinc-500 text-xs">Costo/mes</div>
+              </div>
+            </div>
+            <div className="border-t border-zinc-800 pt-3 flex flex-col gap-1.5">
+              <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Balances</div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400 text-sm">Energía</span>
+                <Badge color={parseFloat(resultado.balance_em) >= -0.5 ? "green" : "red"}>
+                  {parseFloat(resultado.balance_em) > 0 ? "+" : ""}
+                  {resultado.balance_em} Mcal
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400 text-sm">Proteína</span>
+                <Badge color={parseFloat(resultado.balance_prot) >= -0.5 ? "green" : "red"}>
+                  {parseFloat(resultado.balance_prot) > 0 ? "+" : ""}
+                  {resultado.balance_prot} g
+                </Badge>
               </div>
             </div>
           </Card>
+          {(parseFloat(resultado.balance_em) < -1.0 || parseFloat(resultado.balance_prot) < -80) && (
+            <Card className="border-amber-700/50 bg-amber-950/30">
+              <div className="text-amber-300 font-bold text-sm mb-1">⚠️ Déficit nutricional</div>
+              <p className="text-zinc-400 text-xs">
+                {parseFloat(resultado.balance_em) < -1.0 ? "Déficit de energía → agregá maíz, sorgo o melaza. " : ""}
+                {parseFloat(resultado.balance_prot) < -80 ? "Déficit de proteína → agregá torta de soya o harina de carne." : ""}
+              </p>
+            </Card>
+          )}
         </div>
       )}
     </div>
