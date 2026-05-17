@@ -1,7 +1,9 @@
 // src/utils/nutricion.js
 import { ALIMENTOS_BASE } from "../data/alimentosBase";
 
-// Límites biológicos y configuraciones del nuevo motor
+// ============================================================
+// CONFIGURACIÓN DEL MOTOR INTELIGENTE
+// ============================================================
 const LIMITES_BIO = {
   yuca_raiz: 0.15,
   urea_pua: 0.01,
@@ -23,6 +25,9 @@ const CONFIG_CALIDAD = {
   "Muy deteriorado": { em: 0.50, pb: 0.45, cms: 0.65 },
 };
 
+// ============================================================
+// CÁLCULO DE REQUERIMIENTOS NRC
+// ============================================================
 function calcularRequerimientosNRC(pv, sistemaId, gdpDeseada = null) {
   const sistema = CONFIG_SISTEMAS[sistemaId] || CONFIG_SISTEMAS.semiIntensivo;
   const gdp = gdpDeseada || (sistema.gdp_min + sistema.gdp_max) / 2;
@@ -38,19 +43,24 @@ function calcularRequerimientosNRC(pv, sistemaId, gdpDeseada = null) {
   return { em_total, pb_total, cms_optimo, cms_maximo, gdp, pv };
 }
 
-function formularRacionInteligente({
+// ============================================================
+// MOTOR DE FORMULACIÓN INTELIGENTE (¡EL QUE ME DISTE!)
+// ============================================================
+export function formularRacionInteligente({
   pv,
   sistemaId,
   alimentosDisponibles,
   preciosUsuario = {},
   estadosCalidad = {},
-  modo = "óptimo",
+  modo = "óptimo", // "óptimo" o "económico"
 }) {
   const pvN = parseFloat(pv);
   if (!pvN || pvN < 50) return { error: true, msg: "Peso vivo no válido." };
+
   const req = calcularRequerimientosNRC(pvN, sistemaId);
   const sistemaConfig = CONFIG_SISTEMAS[sistemaId] || CONFIG_SISTEMAS.semiIntensivo;
 
+  // Ajustar composición por calidad
   const alimentosProcesados = alimentosDisponibles.map((al) => {
     const calidad = estadosCalidad[al.id] || "Óptimo";
     const factor = CONFIG_CALIDAD[calidad];
@@ -92,6 +102,7 @@ function formularRacionInteligente({
     };
   }
 
+  // Ordenar según modo
   if (modo === "económico") {
     forrajes.sort((a, b) => a.precio_kg - b.precio_kg);
     energeticos.sort((a, b) => a.precio_kg - b.precio_kg);
@@ -132,13 +143,16 @@ function formularRacionInteligente({
     return msAsignada;
   };
 
+  // Forraje base
   const msForrajeInicial = req.cms_optimo * sistemaConfig.forraje_min;
   intentarInyectar(forrajes[0], msForrajeInicial);
 
+  // Minerales (dosis pequeña)
   if (minerales[0]) {
     intentarInyectar(minerales[0], pvN * 0.0003);
   }
 
+  // Espacio para concentrados
   let espacioConcentrado = req.cms_optimo - ms_acum;
   if (espacioConcentrado > 0.1) {
     let deficitPB = Math.max(0, req.pb_total - pb_acum);
@@ -162,6 +176,7 @@ function formularRacionInteligente({
     }
   }
 
+  // Calcular indicadores y alertas
   const fdnPorcentajeTotal = ms_acum > 0 ? (fdn_acum / ms_acum) * 100 : 0;
   let alertas = [];
   let gdpEstimada = req.gdp;
@@ -215,11 +230,11 @@ function formularRacionInteligente({
   };
 }
 
-// === WRAPPERS PARA COMPATIBILIDAD CON LA UI EXISTENTE ===
+// ============================================================
+// WRAPPER PARA COMPATIBILIDAD CON LA UI (MANTIENE MISMA ESTRUCTURA)
+// ============================================================
 export function calcularRequerimientos(pv, razaObj, sistemaId = "semiIntensivo") {
-  // razaObj se ignora en el nuevo motor, pero se mantiene por compatibilidad
   const req = calcularRequerimientosNRC(parseFloat(pv), sistemaId);
-  // Adaptar a la estructura que usaba la UI antigua
   return {
     em_total: req.em_total,
     pb_total: req.pb_total,
@@ -232,6 +247,7 @@ export function calcularRequerimientos(pv, razaObj, sistemaId = "semiIntensivo")
   };
 }
 
+// Función unificada para la UI: recibe listas de forrajes y concentrados, pero internamente usa el motor inteligente
 export function formularRacionConIngredientes(
   forrajesSeleccionados,
   concentradosSeleccionados,
@@ -239,21 +255,22 @@ export function formularRacionConIngredientes(
   razaObj,
   sistemaId,
   preciosUsr = {},
-  minsPersonalizados = {}
+  minsPersonalizados = {} // no se usa en este motor, pero se deja por compatibilidad
 ) {
-  // Unimos forrajes y concentrados en un solo array de alimentos disponibles
-  const alimentosDisponibles = [...forrajesSeleccionados, ...concentradosSeleccionados];
-  const modo = "óptimo"; // por defecto, el modo automático (se puede cambiar según lógica externa)
+  // Unimos forrajes y concentrados para pasarlos al motor
+  const todosAlimentos = [...forrajesSeleccionados, ...concentradosSeleccionados];
+  // Determinamos el modo según algún criterio (podría venir de la UI, aquí lo dejamos fijo como "óptimo" pero la UI lo controla)
+  // En la nueva CalculadoraRacion usaremos directamente formularRacionInteligente, así que este wrapper puede quedar simple.
+  const modo = "óptimo"; // por defecto
   const resultado = formularRacionInteligente({
     pv,
     sistemaId,
-    alimentosDisponibles,
+    alimentosDisponibles: todosAlimentos,
     preciosUsuario: preciosUsr,
-    estadosCalidad: {}, // sin calidades por ahora
+    estadosCalidad: {},
     modo,
   });
   if (resultado.error) return null;
-  // Transformar la salida al formato que espera la UI (racion, req, alertas, etc.)
   const req = calcularRequerimientos(pv, razaObj, sistemaId);
   return {
     racion: resultado.racion.map((r) => ({
@@ -269,7 +286,7 @@ export function formularRacionConIngredientes(
     ms_pct_pv: resultado.indicadores.ms_pct_pv,
     em_total: resultado.indicadores.em_aportada.toFixed(2),
     prot_total: resultado.indicadores.pb_aportada.toFixed(0),
-    fdn_pct: resultado.indicadores.fdn_pct,
+    fdn_pct: resultado.indicadores.fdn_pct.toFixed(1),
     costo_total: resultado.indicadores.costo_dia.toFixed(2),
     balance_em: (resultado.indicadores.em_aportada - req.em_total).toFixed(2),
     balance_prot: (resultado.indicadores.pb_aportada - req.pb_total).toFixed(0),
