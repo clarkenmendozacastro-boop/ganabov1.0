@@ -1,4 +1,5 @@
 // src/data/alimentosBase.js
+
 export const ALIMENTOS_BASE = [
   // ========== FORRAJES ==========
   { id: "pasto_mombasa", nombre: "Pasto Mombasa (Megathyrsus maximus)", categoria: "forraje", ms: 22, em: 1.9, prot: 8.5, fdn: 68, precio_kg: 0.45 },
@@ -17,15 +18,15 @@ export const ALIMENTOS_BASE = [
   { id: "chala_maiz", nombre: "Chala de Maíz Seca (Rastrojo)", categoria: "forraje", ms: 85, em: 1.5, prot: 4.5, fdn: 74, precio_kg: 0.80 },
   { id: "pasto_nativo_pantanal", nombre: "Pastizales Nativos (Pantanal / Bajíos)", categoria: "forraje", ms: 28, em: 1.6, prot: 5.0, fdn: 71, precio_kg: 0.30 },
 
-  // ========== ENERGÉTICOS ==========
-  { id: "maiz_amarillo", nombre: "Maíz Amarillo en Grano (Molido/Chancado)", categoria: "energético", ms: 88, em: 3.3, prot: 8.8, fdn: 12, precio_kg: 2.20 },
-  { id: "sorgo_grano", nombre: "Sorgo Grano Seco Molido", categoria: "energético", ms: 89, em: 3.1, prot: 9.0, fdn: 15, precio_kg: 1.90 },
-  { id: "afrecho_arroz_blanco", nombre: "Afrecho de Arroz Integral (Aceitoso)", categoria: "energético", ms: 90, em: 2.9, prot: 12.5, fdn: 22, precio_kg: 1.80 },
-  { id: "afrecho_trigo", nombre: "Afrecho / Salvado de Trigo", categoria: "energético", ms: 88, em: 2.5, prot: 15.2, fdn: 38, precio_kg: 1.70 },
-  { id: "melaza_caña", nombre: "Melaza de Caña de Azúcar (Ingenios Cruceños)", categoria: "energético", ms: 75, em: 2.6, prot: 3.0, fdn: 0, precio_kg: 1.20 },
-  { id: "yuca_raiz", nombre: "Yuca Raíz Fresca (Picada)", categoria: "energético", ms: 35, em: 3.0, prot: 2.5, fdn: 10, precio_kg: 0.90 },
-  { id: "cascarilla_soya", nombre: "Cascarilla de Soya (Fibra energética)", categoria: "energético", ms: 90, em: 2.4, prot: 12.1, fdn: 60, precio_kg: 2.00 },
-  { id: "grano_destileria_sorgo", nombre: "Burlanda de Sorgo Seca (DDGS)", categoria: "energético", ms: 91, em: 3.0, prot: 27.0, fdn: 34, precio_kg: 2.50 },
+  // ========== ENERGETICOS ==========
+  { id: "maiz_amarillo", nombre: "Maíz Amarillo en Grano (Molido/Chancado)", categoria: "energetico", ms: 88, em: 3.3, prot: 8.8, fdn: 12, precio_kg: 2.20 },
+  { id: "sorgo_grano", nombre: "Sorgo Grano Seco Molido", categoria: "energetico", ms: 89, em: 3.1, prot: 9.0, fdn: 15, precio_kg: 1.90 },
+  { id: "afrecho_arroz_blanco", nombre: "Afrecho de Arroz Integral (Aceitoso)", categoria: "energetico", ms: 90, em: 2.9, prot: 12.5, fdn: 22, precio_kg: 1.80 },
+  { id: "afrecho_trigo", nombre: "Afrecho / Salvado de Trigo", categoria: "energetico", ms: 88, em: 2.5, prot: 15.2, fdn: 38, precio_kg: 1.70 },
+  { id: "melaza_caña", nombre: "Melaza de Caña de Azúcar (Ingenios Cruceños)", categoria: "energetico", ms: 75, em: 2.6, prot: 3.0, fdn: 0, precio_kg: 1.20 },
+  { id: "yuca_raiz", nombre: "Yuca Raíz Fresca (Picada)", categoria: "energetico", ms: 35, em: 3.0, prot: 2.5, fdn: 10, precio_kg: 0.90 },
+  { id: "cascarilla_soya", nombre: "Cascarilla de Soya (Fibra energética)", categoria: "energetico", ms: 90, em: 2.4, prot: 12.1, fdn: 60, precio_kg: 2.00 },
+  { id: "grano_destileria_sorgo", nombre: "Burlanda de Sorgo Seca (DDGS)", categoria: "energetico", ms: 91, em: 3.0, prot: 27.0, fdn: 34, precio_kg: 2.50 },
 
   // ========== PROTEICOS ==========
   { id: "harina_soya_solvent", nombre: "Harina de Soya Extracción (46% Prot)", categoria: "proteico", ms: 89, em: 3.15, prot: 46.5, fdn: 13, precio_kg: 5.00 },
@@ -42,11 +43,16 @@ export const ALIMENTOS_BASE = [
   { id: "carbonato_calcio", nombre: "Carbonato de Calcio (Corrector de Calcio)", categoria: "mineral", ms: 99, em: 0.0, prot: 0.0, fdn: 0, precio_kg: 2.50 }
 ];
 
-export const CATEGORIAS_ORDER = ["forraje", "energético", "proteico", "mineral"];
+export const CATEGORIAS_ORDER = [
+  "forraje",
+  "energetico",
+  "proteico",
+  "mineral"
+];
 
 export const TIPO_LABELS = {
   forraje: "🌿 Forraje",
-  energético: "🌽 Energético",
+  energetico: "🌽 Energético",
   proteico: "🫘 Proteico",
   mineral: "💊 Mineral"
 };
