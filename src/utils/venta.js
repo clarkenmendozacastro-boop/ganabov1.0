@@ -51,5 +51,8 @@ export const recomendarAjuste = (gdp, razaObj, esCriollo) => {
     });
   return aj;
 };
+export {
+  calcularGDP,
+  calcularProyeccion
+};
 
-export { calcularProyeccion };
