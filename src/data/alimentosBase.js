@@ -42,12 +42,11 @@ export const ALIMENTOS_BASE = [
   { id: "carbonato_calcio", nombre: "Carbonato de Calcio (Corrector de Calcio)", categoria: "mineral", ms: 99, em: 0.0, prot: 0.0, fdn: 0, precio_kg: 2.50 }
 ];
 
-// Para compatibilidad con la UI (etiquetas de tipos, aunque el motor no las usa directamente)
+export const CATEGORIAS_ORDER = ["forraje", "energético", "proteico", "mineral"];
+
 export const TIPO_LABELS = {
   forraje: "🌿 Forraje",
   energético: "🌽 Energético",
   proteico: "🫘 Proteico",
   mineral: "💊 Mineral"
 };
-
-export const CATEGORIAS_ORDER = ["forraje", "energético", "proteico", "mineral"];
