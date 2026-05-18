@@ -1,8 +1,14 @@
 // src/utils/nutricion.js
 // ============================================================
 // GANABOV ENGINE PRO - MOTOR NUTRICIONAL AVANZADO
-// Incluye: ENm, ENg, peNDF, PDR/PNR, acidosis, sincronía, scores
 // ============================================================
+
+// Exportación de FASES_FEEDLOT (para que la interfaz la pueda importar)
+export const FASES_FEEDLOT = {
+  inicio: { nombre: "Inicio", dias: 14, conc_max: 0.40, peNDF_min: 25, forraje_min: 0.60 },
+  desarrollo: { nombre: "Desarrollo", dias: 21, conc_max: 0.65, peNDF_min: 18, forraje_min: 0.45 },
+  terminacion: { nombre: "Terminación", dias: 30, conc_max: 0.85, peNDF_min: 12, forraje_min: 0.30 }
+};
 
 // Configuración de sistemas
 const CONFIG_SISTEMAS = {
@@ -52,7 +58,6 @@ export function formularRacionAvanzada({
     return { error: true, msg: "Peso mínimo 80 kg" };
   }
 
-  // Obtener sistema y raza
   const sistema = CONFIG_SISTEMAS[sistemaId] || CONFIG_SISTEMAS.semiIntensivo;
   const razaParam = RAZA_PARAMS[razaId] || RAZA_PARAMS.otro;
 
@@ -70,7 +75,7 @@ export function formularRacionAvanzada({
   if (sistemaId === "feedlot" && fase === "inicio") cmsBase *= 0.9;
   else if (sistemaId === "feedlot" && fase === "terminacion") cmsBase *= 1.05;
 
-  // Procesar alimentos con valores por defecto
+  // Procesar alimentos
   const alimentos = alimentosDisponibles.map(al => {
     const calidad = estadosCalidad[al.id] || "Óptimo";
     const factor = FACTORES_CALIDAD[calidad];
@@ -105,9 +110,9 @@ export function formularRacionAvanzada({
     return {
       error: false, dietaInsuficiente: true,
       msg: "No hay forrajes disponibles",
-      alertas: ["⚠️ CRÍTICO: No hay forrajes. La dieta no es posible."],
+      alertas: ["⚠️ CRÍTICO: No hay forrajes"],
       racion: [], gdp_estimada: -0.3,
-      indicadores: { ms_total_kg: 0, costo_dia: 0, peNDF_pct: 0, riesgo_acidosis: "crítico" }
+      indicadores: { ms_total_kg: 0, costo_dia: 0 }
     };
   }
 
@@ -140,18 +145,16 @@ export function formularRacionAvanzada({
     almidonRapido_acum += msKg * (al.almidon_rapido / 100);
   };
 
-  // 1. Forraje base (50-60% de la MS)
+  // 1. Forraje
   const pctForraje = sistemaId === "feedlot" ? 0.45 : 0.60;
   let msForraje = cmsBase * pctForraje;
   let kgForraje = msForraje / (forrajes[0].ms / 100);
   agregar(forrajes[0], kgForraje);
 
-  // 2. Mineral (0.03% del PV)
-  if (minerales.length) {
-    agregar(minerales[0], pvN * 0.0003);
-  }
+  // 2. Mineral
+  if (minerales.length) agregar(minerales[0], pvN * 0.0003);
 
-  // 3. Energéticos (si hay, 20-30% de la MS)
+  // 3. Energéticos
   let msRestante = cmsBase - ms_acum;
   if (energeticos.length > 0 && msRestante > 0.2) {
     let msEnerg = Math.min(msRestante * 0.6, cmsBase * 0.30);
@@ -160,14 +163,14 @@ export function formularRacionAvanzada({
     msRestante = cmsBase - ms_acum;
   }
 
-  // 4. Proteicos (si hay, 10-15% de la MS)
+  // 4. Proteicos
   if (proteicos.length > 0 && msRestante > 0.2) {
     let msProt = Math.min(msRestante, cmsBase * 0.15);
     let kgProt = msProt / (proteicos[0].ms / 100);
     agregar(proteicos[0], kgProt);
   }
 
-  // 5. Completar hasta 4 ingredientes si es necesario
+  // 5. Completar mínimo 4 ingredientes
   if (racion.length < 4) {
     const candidatos = [...forrajes.slice(1), ...energeticos.slice(1), ...proteicos.slice(1)];
     for (let i = 0; i < candidatos.length && racion.length < 4; i++) {
@@ -175,13 +178,13 @@ export function formularRacionAvanzada({
     }
   }
 
-  // Calcular indicadores finales
+  // Calcular indicadores
   ms_acum = Math.round(ms_acum * 100) / 100;
   const pctConcentrado = ((ms_acum - (racion.filter(r => r.categoria === "forraje").reduce((s,r) => s + r.ms_kg, 0))) / ms_acum) * 100;
   const peNDF_pct = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
   const almidon_pct = ms_acum > 0 ? (almidonRapido_acum / ms_acum) * 100 : 0;
 
-  // Índice de acidosis
+  // Score acidosis
   let scoreAcidosis = 0;
   if (peNDF_pct < 12) scoreAcidosis += 40;
   else if (peNDF_pct < 18) scoreAcidosis += 30;
@@ -198,7 +201,7 @@ export function formularRacionAvanzada({
   else if (scoreAcidosis >= 50) riesgoAcidosis = "alto";
   else if (scoreAcidosis >= 25) riesgoAcidosis = "precaución";
 
-  // Ganancia estimada
+  // GDP estimada
   let gdpEstimada = gdpBase * razaParam.ajuste_gdp;
   if (scoreAcidosis > 50) gdpEstimada *= 0.5;
   else if (scoreAcidosis > 25) gdpEstimada *= 0.8;
@@ -207,10 +210,7 @@ export function formularRacionAvanzada({
   gdpEstimada = Math.round(gdpEstimada * 100) / 100;
   if (gdpEstimada < -0.2) gdpEstimada = -0.2;
 
-  // Costo
   const costoDiario = racion.reduce((s,r) => s + r.precio_total, 0);
-
-  // Scores profesionales
   const scoreRuminal = Math.max(0, 100 - scoreAcidosis);
   const scoreEficiencia = Math.min(100, (gdpEstimada / gdpBase) * 100);
   const scoreEconomico = Math.min(100, (gdpEstimada / (costoDiario + 0.01)) * 20);
@@ -218,15 +218,14 @@ export function formularRacionAvanzada({
   // Alertas
   let alertas = [];
   if (peNDF_pct < 20) alertas.push(`⚠️ Fibra efectiva baja (peNDF ${peNDF_pct.toFixed(0)}%)`);
-  if (pb_acum > PB_total * 1.2) alertas.push(`⚠️ Exceso de proteína (${(pb_acum/PB_total*100).toFixed(0)}% del requerimiento)`);
+  if (pb_acum > PB_total * 1.2) alertas.push(`⚠️ Exceso de proteína (${(pb_acum/PB_total*100).toFixed(0)}%)`);
   if (enm_acum < ENm_total * 0.85) alertas.push(`⚠️ Energía insuficiente (${(enm_acum/ENm_total*100).toFixed(0)}%)`);
-  if (riesgoAcidosis !== "seguro") alertas.push(`🔴 Riesgo de acidosis: ${riesgoAcidosis} (score ${scoreAcidosis})`);
+  if (riesgoAcidosis !== "seguro") alertas.push(`🔴 Riesgo de acidosis: ${riesgoAcidosis}`);
 
-  // Explicaciones IA
   let explicaciones = [];
   if (scoreAcidosis > 50) explicaciones.push("Se limitó el concentrado para evitar acidosis ruminal.");
-  if (pb_acum > PB_total * 1.15) explicaciones.push("Se redujo la proteína porque excedía el requerimiento biológico.");
-  if (peNDF_pct < 20) explicaciones.push("Se aumentó la fibra efectiva para mejorar rumia y estabilidad del pH.");
+  if (pb_acum > PB_total * 1.15) explicaciones.push("Se redujo la proteína porque excedía el requerimiento.");
+  if (peNDF_pct < 20) explicaciones.push("Se aumentó la fibra efectiva para mejorar rumia.");
 
   return {
     error: false,
