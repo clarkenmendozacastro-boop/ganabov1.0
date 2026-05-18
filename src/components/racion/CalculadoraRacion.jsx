@@ -7,34 +7,73 @@ import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { ALIMENTOS_BASE, CATEGORIAS_ORDER, TIPO_LABELS } from "../../data/alimentosBase";
 import { RAZAS } from "../../data/razas";
-import { formularRacionInteligente, calcularRequerimientosNRC } from "../../utils/nutricion";
+import { formularRacionInteligente, calcularRequerimientosNRC, reemplazarIngrediente, recalcularRacion } from "../../utils/nutricion";
 
 const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} }) => {
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
-  const [modo, setModo] = useState("automatico");
+  const [modo, setModo] = useState("optimo"); // "optimo" o "economico"
   const [selIds, setSelIds] = useState(new Set());
   const [busq, setBusq] = useState("");
   const [resultado, setResultado] = useState(null);
   const [showSel, setShowSel] = useState(false);
+  const [estadosCalidad, setEstadosCalidad] = useState({});
 
   const todosAl = [...ALIMENTOS_BASE, ...customAl];
-  const filtrados = todosAl.filter(
-    (a) =>
-      a.nombre.toLowerCase().includes(busq.toLowerCase()) ||
-      (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase())
+  const filtrados = todosAl.filter(a =>
+    a.nombre.toLowerCase().includes(busq.toLowerCase()) ||
+    (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase())
   );
-  const seleccionados = todosAl.filter((a) => selIds.has(a.id));
+  const seleccionados = todosAl.filter(a => selIds.has(a.id));
 
   const toggleSeleccion = (id) => {
-    setSelIds((prev) => {
+    setSelIds(prev => {
       const nuevo = new Set(prev);
       if (nuevo.has(id)) nuevo.delete(id);
       else nuevo.add(id);
       return nuevo;
     });
     setResultado(null);
+  };
+
+  const cambiarCalidad = (id, nuevaCalidad) => {
+    setEstadosCalidad(prev => ({ ...prev, [id]: nuevaCalidad }));
+    // Recalcular automáticamente si ya hay resultado
+    if (resultado && resultado.racion) {
+      recalcularConNuevasCalidades();
+    }
+  };
+
+  const recalcularConNuevasCalidades = () => {
+    if (!peso) return;
+    let alimentosUsar = [];
+    if (modo === "personalizado") {
+      if (seleccionados.length === 0) return;
+      alimentosUsar = seleccionados;
+    } else {
+      alimentosUsar = todosAl;
+    }
+    const result = formularRacionInteligente({
+      pv: peso,
+      sistemaId: sistema,
+      alimentosDisponibles: alimentosUsar,
+      preciosUsuario: preciosUsr,
+      estadosCalidad,
+      modo: modo === "optimo" ? "optimo" : "economico",
+    });
+    if (!result.error) {
+      const req = calcularRequerimientosNRC(parseFloat(peso), sistema);
+      setResultado({
+        ...result,
+        req: {
+          em_total: req.em_total,
+          pb_total: req.pb_total,
+          ms_opt: req.cms_optimo,
+          ms_max: req.cms_maximo,
+        },
+      });
+    }
   };
 
   const calcular = () => {
@@ -46,7 +85,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
     let alimentosUsar = [];
     if (modo === "personalizado") {
       if (seleccionados.length === 0) {
-        alert("Seleccione al menos un alimento.");
+        alert("Seleccione al menos un alimento en modo personalizado.");
         return;
       }
       alimentosUsar = seleccionados;
@@ -54,15 +93,13 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
       alimentosUsar = todosAl;
     }
 
-    const modoMotor = modo === "automatico" ? "óptimo" : "económico";
-
     const result = formularRacionInteligente({
       pv: peso,
       sistemaId: sistema,
       alimentosDisponibles: alimentosUsar,
       preciosUsuario: preciosUsr,
-      estadosCalidad: {},
-      modo: modoMotor,
+      estadosCalidad,
+      modo: modo === "optimo" ? "optimo" : "economico",
     });
 
     if (result.error) {
@@ -74,24 +111,63 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
     const req = calcularRequerimientosNRC(parseFloat(peso), sistema);
 
     setResultado({
-      racion: result.racion,
+      ...result,
       req: {
         em_total: req.em_total,
         pb_total: req.pb_total,
         ms_opt: req.cms_optimo,
         ms_max: req.cms_maximo,
       },
-      ms_total: result.indicadores.ms_total_kg.toFixed(2),
-      ms_pct_pv: result.indicadores.ms_pct_pv,
-      em_total: result.indicadores.em_aportada.toFixed(2),
-      prot_total: result.indicadores.pb_aportada.toFixed(0),
-      fdn_pct: result.indicadores.fdn_pct,
-      costo_total: result.indicadores.costo_dia.toFixed(2),
-      balance_em: (result.indicadores.em_aportada - req.em_total).toFixed(2),
-      balance_prot: (result.indicadores.pb_aportada - req.pb_total).toFixed(0),
-      alertas: result.alertas,
-      metodo: "Motor Inteligente GanaBov Pro",
     });
+  };
+
+  const eliminarIngrediente = async (idAEliminar) => {
+    if (!resultado || !resultado.racion) return;
+    const racionActual = resultado.racion;
+    const pvN = parseFloat(peso);
+    const req = calcularRequerimientosNRC(pvN, sistema);
+    let alimentosUsar = [];
+    if (modo === "personalizado") {
+      alimentosUsar = seleccionados;
+    } else {
+      alimentosUsar = todosAl;
+    }
+    const reemplazo = reemplazarIngrediente(racionActual, idAEliminar, alimentosUsar, preciosUsr, estadosCalidad, pvN, sistema, modo === "optimo" ? "optimo" : "economico");
+    if (reemplazo.error) {
+      alert(reemplazo.msg);
+      // Intentar solo eliminar sin reemplazar
+      const nuevaRacion = racionActual.filter(r => r.id !== idAEliminar);
+      const recalc = recalcularRacion(nuevaRacion, pvN, sistema, req, modo);
+      setResultado(prev => ({
+        ...prev,
+        racion: recalc.racion,
+        gdp_estimada: recalc.gdp_estimada,
+        indicadores: recalc.indicadores,
+        alertas: recalc.alertas,
+      }));
+      return;
+    }
+    // Recargar la ración completa con el nuevo ingrediente (para que respete límites y cantidades)
+    const nuevosAlimentos = alimentosUsar.map(a => {
+      if (a.id === reemplazo.nuevoAlimento.id) return reemplazo.nuevoAlimento;
+      return a;
+    });
+    const nuevaFormulacion = formularRacionInteligente({
+      pv: peso,
+      sistemaId: sistema,
+      alimentosDisponibles: nuevosAlimentos,
+      preciosUsuario: preciosUsr,
+      estadosCalidad,
+      modo: modo === "optimo" ? "optimo" : "economico",
+    });
+    if (!nuevaFormulacion.error) {
+      setResultado(prev => ({
+        ...nuevaFormulacion,
+        req: prev.req,
+      }));
+    } else {
+      alert("No se pudo reformular la dieta después del reemplazo.");
+    }
   };
 
   return (
@@ -115,14 +191,14 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
         <div>
           <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Modo de formulación</label>
           <div className="flex gap-2 mt-1">
-            <button onClick={() => setModo("automatico")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "automatico" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>🚀 Automático</button>
+            <button onClick={() => setModo("optimo")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "optimo" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>🚀 Óptimo (salud)</button>
             <button onClick={() => setModo("economico")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "economico" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>💰 Económico</button>
             <button onClick={() => setModo("personalizado")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "personalizado" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>✏️ Personalizado</button>
           </div>
           <p className="text-zinc-400 text-xs mt-2">
-            {modo === "automatico" && "El motor selecciona los mejores ingredientes para maximizar ganancia, respetando límites biológicos."}
-            {modo === "economico" && "Prioriza el menor costo, manteniendo los requerimientos nutricionales mínimos."}
-            {modo === "personalizado" && "Elige manualmente los alimentos que quieras incluir."}
+            {modo === "optimo" && "Prioriza salud ruminal, fibra efectiva y desempeño."}
+            {modo === "economico" && "Reduce costos SIN sacrificar salud ni estabilidad."}
+            {modo === "personalizado" && "Elige manualmente los alimentos disponibles."}
           </p>
         </div>
 
@@ -132,7 +208,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
               {showSel ? "Cerrar" : `+ Elegir alimentos${seleccionados.length ? ` (${seleccionados.length})` : ""}`}
             </Btn>
             {showSel && (
-              <div>
+              <div className="max-h-96 overflow-y-auto">
                 <Inp placeholder="Buscar..." value={busq} onChange={e => setBusq(e.target.value)} />
                 {CATEGORIAS_ORDER.map(cat => {
                   const gr = filtrados.filter(a => a.categoria === cat);
@@ -169,71 +245,120 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
 
       {resultado && (
         <div className="flex flex-col gap-3">
+          {resultado.dietaInsuficiente && (
+            <Card className="border-red-700/50 bg-red-950/30">
+              <div className="text-red-400 font-bold">🚨 Dieta insuficiente</div>
+              <p className="text-sm">{resultado.msg || "No se puede formular una dieta funcional con los alimentos disponibles."}</p>
+            </Card>
+          )}
           {resultado.alertas.map((alerta, idx) => (
-            <Card key={idx} className="border-red-700/50 bg-red-950/30">
-              <div className="text-red-400 text-sm font-bold">{alerta}</div>
+            <Card key={idx} className="border-amber-700/50 bg-amber-950/30">
+              <div className="text-amber-400 text-sm font-bold">{alerta}</div>
             </Card>
           ))}
           <Card>
             <div className="flex justify-between items-center mb-1">
               <div className="text-sky-400 font-black">🔬 Ración formulada</div>
-              <Badge color="purple">{resultado.metodo}</Badge>
+              <Badge color="purple">Motor Inteligente GanaBov</Badge>
             </div>
             <div className="text-xs font-bold text-zinc-400 mb-2">Ingredientes — kg/día</div>
             {resultado.racion.map((al, i) => (
-              <div key={i} className="flex justify-between items-center bg-zinc-800 rounded-xl px-4 py-3 mb-2">
-                <div>
-                  <div className="text-white font-semibold text-sm">{al.nombre}</div>
-                  <div className="text-zinc-500 text-xs">{TIPO_LABELS[al.categoria]}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-emerald-400 font-black text-lg">
-                    {al.kg_dia < 0.1 ? `${(al.kg_dia * 1000).toFixed(0)} g` : `${al.kg_dia} kg`}
+              <div key={i} className="flex flex-col border-b border-zinc-700 py-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-semibold text-sm">{al.nombre}</div>
+                    <div className="text-zinc-500 text-xs">{TIPO_LABELS[al.categoria]}</div>
                   </div>
-                  <div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div>
+                  <div className="text-right">
+                    <div className="text-emerald-400 font-black text-lg">
+                      {al.kg_dia < 0.1 ? `${(al.kg_dia * 1000).toFixed(0)} g` : `${al.kg_dia} kg`}
+                    </div>
+                    <div className="text-zinc-600 text-xs">{al.ms_kg} kg MS</div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-2 gap-2">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => eliminarIngrediente(al.id)}
+                      className="text-red-500 text-xs hover:text-red-400 bg-red-950/30 px-2 py-0.5 rounded-full"
+                    >
+                      🗑️ Eliminar
+                    </button>
+                    <select
+                      value={estadosCalidad[al.id] || "Óptimo"}
+                      onChange={(e) => cambiarCalidad(al.id, e.target.value)}
+                      className="bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-0.5 text-xs text-white"
+                    >
+                      <option value="Óptimo">Óptimo</option>
+                      <option value="Bueno">Bueno</option>
+                      <option value="Regular">Regular</option>
+                      <option value="Bajo">Bajo</option>
+                      <option value="Muy deteriorado">Muy deteriorado</option>
+                    </select>
+                  </div>
+                  <div className="text-zinc-500 text-xs">
+                    Calidad: {al.calidad}
+                  </div>
                 </div>
               </div>
             ))}
             <div className="text-xs font-bold text-zinc-400 mb-2 mt-4">Resumen nutricional</div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">{resultado.ms_total} kg</div>
-                <div className="text-zinc-500 text-xs">MS total · {resultado.ms_pct_pv}% PV</div>
+                <div className="font-bold text-emerald-400">{resultado.indicadores.ms_total_kg} kg</div>
+                <div className="text-zinc-500 text-xs">MS total · {resultado.indicadores.ms_pct_pv}% PV</div>
               </div>
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">{resultado.fdn_pct}%</div>
+                <div className="font-bold text-emerald-400">{resultado.indicadores.fdn_pct}%</div>
                 <div className="text-zinc-500 text-xs">FDN (mín 35%)</div>
               </div>
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">{resultado.em_total} Mcal</div>
+                <div className="font-bold text-emerald-400">{resultado.indicadores.em_aportada} Mcal</div>
                 <div className="text-zinc-500 text-xs">EM · req {resultado.req.em_total.toFixed(2)}</div>
               </div>
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">{resultado.prot_total} g</div>
+                <div className="font-bold text-emerald-400">{resultado.indicadores.pb_aportada} g</div>
                 <div className="text-zinc-500 text-xs">PB · req {resultado.req.pb_total.toFixed(0)} g</div>
               </div>
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">Bs. {resultado.costo_total}</div>
+                <div className="font-bold text-emerald-400">Bs. {resultado.indicadores.costo_dia}</div>
                 <div className="text-zinc-500 text-xs">Costo/día</div>
               </div>
               <div className="bg-zinc-800 p-3 rounded-xl">
-                <div className="font-bold text-emerald-400">Bs. {(parseFloat(resultado.costo_total) * 30).toFixed(0)}</div>
+                <div className="font-bold text-emerald-400">Bs. {(parseFloat(resultado.indicadores.costo_dia) * 30).toFixed(0)}</div>
                 <div className="text-zinc-500 text-xs">Costo/mes</div>
+              </div>
+              <div className="bg-zinc-800 p-3 rounded-xl">
+                <div className="font-bold text-emerald-400">{resultado.gdp_estimada} kg/día</div>
+                <div className="text-zinc-500 text-xs">Ganancia estimada</div>
+              </div>
+              <div className="bg-zinc-800 p-3 rounded-xl">
+                <div className="font-bold text-emerald-400">{resultado.indicadores.conversion}</div>
+                <div className="text-zinc-500 text-xs">Conversión alimenticia</div>
               </div>
             </div>
             <div className="border-t border-zinc-800 pt-3">
-              <div className="text-xs font-bold text-zinc-400 mb-1">Balances</div>
-              <div className="flex justify-between"><span className="text-zinc-400">Energía</span><Badge color={parseFloat(resultado.balance_em) >= -0.5 ? "green" : "red"}>{parseFloat(resultado.balance_em) > 0 ? "+" : ""}{resultado.balance_em} Mcal</Badge></div>
-              <div className="flex justify-between mt-1"><span className="text-zinc-400">Proteína</span><Badge color={parseFloat(resultado.balance_prot) >= -0.5 ? "green" : "red"}>{parseFloat(resultado.balance_prot) > 0 ? "+" : ""}{resultado.balance_prot} g</Badge></div>
+              <div className="text-xs font-bold text-zinc-400 mb-1">Cumplimiento de requerimientos</div>
+              <div className="flex justify-between">
+                <span>Energía</span>
+                <Badge color={resultado.indicadores.cumplimiento_energia >= 85 ? "green" : resultado.indicadores.cumplimiento_energia >= 70 ? "yellow" : "red"}>
+                  {resultado.indicadores.cumplimiento_energia}%
+                </Badge>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span>Proteína</span>
+                <Badge color={resultado.indicadores.cumplimiento_proteina >= 85 ? "green" : resultado.indicadores.cumplimiento_proteina >= 70 ? "yellow" : "red"}>
+                  {resultado.indicadores.cumplimiento_proteina}%
+                </Badge>
+              </div>
             </div>
           </Card>
-          {(parseFloat(resultado.balance_em) < -1 || parseFloat(resultado.balance_prot) < -80) && (
-            <Card className="border-amber-700/50 bg-amber-950/30">
-              <div className="text-amber-300 font-bold">⚠️ Déficit nutricional</div>
-              <p className="text-xs">Agregue más concentrado o ajuste la ración.</p>
-            </Card>
-          )}
         </div>
+      )}
+      {Object.keys(preciosUsr).length === 0 && (
+        <Card className="bg-sky-950/30 border-sky-700/40">
+          <p className="text-sky-300 text-xs">💡 Puedes colocar precios a los alimentos en la pantalla "Alimentos" para calcular una dieta más económica.</p>
+        </Card>
       )}
     </div>
   );
