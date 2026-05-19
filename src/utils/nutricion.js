@@ -1,4 +1,4 @@
-// src/utils/nutricion.js - VERSIÓN DEFINITIVA CON ALERTAS SOLO EN PERSONALIZADO
+// src/utils/nutricion.js - VERSIÓN CON MEJORAS COMPLETAS
 export const FASES_FEEDLOT = {
   inicio: { nombre: "Inicio", dias: 14, conc_max: 40, peNDF_min: 25, forraje_min: 60 },
   desarrollo: { nombre: "Desarrollo", dias: 21, conc_max: 65, peNDF_min: 18, forraje_min: 45 },
@@ -12,11 +12,17 @@ const CONFIG_SISTEMAS = {
 };
 
 const FACTORES_CALIDAD = {
-  Óptimo: { enm: 1.0, prot: 1.0, digestibilidad: 1.0, consumo: 1.0 },
-  Bueno: { enm: 0.95, prot: 0.95, digestibilidad: 0.95, consumo: 0.98 },
-  Regular: { enm: 0.85, prot: 0.85, digestibilidad: 0.85, consumo: 0.92 },
-  Bajo: { enm: 0.70, prot: 0.70, digestibilidad: 0.70, consumo: 0.85 },
-  "Muy deteriorado": { enm: 0.50, prot: 0.50, digestibilidad: 0.50, consumo: 0.70 }
+  Óptimo: { enm: 1.0, prot: 1.0, digestibilidad: 1.0, consumo: 1.0, alerta: false },
+  Bueno: { enm: 0.95, prot: 0.95, digestibilidad: 0.95, consumo: 0.98, alerta: false },
+  Regular: { enm: 0.85, prot: 0.85, digestibilidad: 0.85, consumo: 0.92, alerta: false },
+  Bajo: { 
+    enm: 0.70, prot: 0.70, digestibilidad: 0.70, consumo: 0.85, alerta: true,
+    msg: "⚠️ ALERTA: Calidad BAJA - Menor digestibilidad (-30%), menor consumo (-15%), riesgo de baja ganancia"
+  },
+  "Muy deteriorado": { 
+    enm: 0.50, prot: 0.50, digestibilidad: 0.50, consumo: 0.70, alerta: true,
+    msg: "🚨 ALERTA CRÍTICA: Calidad MUY DETERIORADA - Riesgo de rechazo del alimento, posible pérdida de peso, peligro de toxicidad"
+  }
 };
 
 const RAZA_PARAMS = {
@@ -28,10 +34,20 @@ const RAZA_PARAMS = {
   otro: { consumo: 0.98, gdp: 0.85 }
 };
 
+// Ingredientes prohibidos por sistema (para evitar selecciones no realistas)
+const INGREDIENTES_RESTRINGIDOS = {
+  pastoril: ['grasa_bypass', 'harina_sangre', 'harina_pescado', 'monensina'],
+  semiIntensivo: ['grasa_bypass', 'harina_sangre', 'harina_pescado'],
+  feedlot: []
+};
+
+// Granos tradicionales (prioridad en selección)
+const GRANOS_TRADICIONALES = ['maiz_amarillo', 'maiz_blanco', 'sorgo_grano', 'sorgo_rojo', 'cebada_grano', 'trigo_grano', 'avena_grano'];
+
 export function formularRacionAvanzada({
   pv, sistemaId, razaId = "otro", alimentosDisponibles,
   preciosUsuario = {}, estadosCalidad = {}, modo = "optimo",
-  fase = null
+  fase = null, alimentosSeleccionadosIds = null  // Para modo "mis_alimentos"
 }) {
   const pvN = parseFloat(pv);
   if (isNaN(pvN) || pvN < 80) return { error: true, msg: "Peso mínimo 80 kg" };
@@ -39,31 +55,48 @@ export function formularRacionAvanzada({
   const sistema = CONFIG_SISTEMAS[sistemaId] || CONFIG_SISTEMAS.semiIntensivo;
   const razaParam = RAZA_PARAMS[razaId] || RAZA_PARAMS.otro;
   const esPersonalizado = (modo === "personalizado");
+  const esMisAlimentos = (modo === "mis_alimentos");
+  const esEconomico = (modo === "economico");
 
-  // Calcular requerimientos NRC
+  // Filtrar alimentos según modo "mis_alimentos"
+  let alimentosUsar = alimentosDisponibles;
+  if (esMisAlimentos && alimentosSeleccionadosIds && alimentosSeleccionadosIds.size > 0) {
+    alimentosUsar = alimentosDisponibles.filter(al => alimentosSeleccionadosIds.has(al.id));
+  }
+
+  // Calcular requerimientos
   const pvMet = Math.pow(pvN, 0.75);
   const ENm_mant = 0.077 * pvMet * 1.1;
   const gdpObjetivo = (sistema.gdp_min + sistema.gdp_max) / 2;
   const ENg = 0.0635 * Math.pow(pvN, 0.6) + 4.1 * gdpObjetivo;
   const ENm_total = ENm_mant + (gdpObjetivo * ENg);
   const PB_total = (3.8 * pvMet + gdpObjetivo * 268 - 29.4 * ENg) / 0.65;
-
-  // Consumo de MS esperado
   let cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo;
   if (sistemaId === "feedlot" && fase === "inicio") cmsBase *= 0.9;
   else if (sistemaId === "feedlot" && fase === "terminacion") cmsBase *= 1.05;
 
-  // Límite de concentrado
   let maxConcentrado = sistema.concentrado_max;
   if (sistemaId === "feedlot" && fase && FASES_FEEDLOT[fase]) {
     maxConcentrado = FASES_FEEDLOT[fase].conc_max;
   }
 
   // Procesar alimentos con calidad
-  const alimentos = alimentosDisponibles.map(al => {
+  let alertasCalidad = [];
+  const alimentos = alimentosUsar.map(al => {
     const calidad = estadosCalidad[al.id] || "Óptimo";
     const factor = FACTORES_CALIDAD[calidad];
     const precio = preciosUsuario[al.id] !== undefined ? parseFloat(preciosUsuario[al.id]) : (al.precio_kg || 0);
+    
+    // Registrar alerta si la calidad es mala
+    if (factor.alerta && al.categoria !== "mineral") {
+      alertasCalidad.push({
+        id: al.id,
+        nombre: al.nombre,
+        calidad: calidad,
+        mensaje: factor.msg
+      });
+    }
+    
     return {
       ...al,
       ms: al.ms || 25,
@@ -82,21 +115,42 @@ export function formularRacionAvanzada({
   let proteicos = alimentos.filter(a => a.categoria === "proteico");
   let minerales = alimentos.filter(a => a.categoria === "mineral");
 
-  if (forrajes.length === 0) {
-    return { error: false, dietaInsuficiente: true, msg: "No hay forrajes", racion: [], gdp_estimada: 0.2 };
+  // Verificar disponibilidad de categorías (para modo mis_alimentos)
+  let deficiencias = [];
+  if (esMisAlimentos) {
+    if (forrajes.length === 0) deficiencias.push({ tipo: "forraje", msg: "⚠️ No has seleccionado ningún FORRAJE. El animal no podrá alimentarse correctamente." });
+    if (energeticos.length === 0) deficiencias.push({ tipo: "energético", msg: "⚠️ FALTAN ENERGÉTICOS. El animal podría tener baja ganancia de peso. Recomendación: Maíz, Sorgo, Melaza o Yuca." });
+    if (proteicos.length === 0) deficiencias.push({ tipo: "proteico", msg: "⚠️ FALTAN PROTEICOS. El desarrollo muscular será limitado. Recomendación: Harina de Soya, Torta de Girasol o Afrecho." });
+    if (minerales.length === 0) deficiencias.push({ tipo: "mineral", msg: "⚠️ FALTA SAL MINERAL. Riesgo de deficiencias minerales." });
   }
 
-  // Ordenar según modo (para personalizado, económico o automático)
-  if (modo === "economico" || esPersonalizado) {
+  if (forrajes.length === 0) {
+    return { error: false, dietaInsuficiente: true, msg: "No hay forrajes", racion: [], gdp_estimada: 0, alertasCalidad, deficiencias };
+  }
+
+  // Ordenar según modo
+  if (esEconomico) {
     forrajes.sort((a,b) => a.precio_kg - b.precio_kg);
     energeticos.sort((a,b) => a.precio_kg - b.precio_kg);
     proteicos.sort((a,b) => a.precio_kg - b.precio_kg);
   } else {
-    // Modo automático/óptimo: priorizar peNDF alto para forrajes (fibra larga)
+    // Priorizar fibra larga para forrajes
     forrajes.sort((a,b) => b.peNDF - a.peNDF);
-    energeticos.sort((a,b) => b.enm - a.enm);
+    // Priorizar granos tradicionales sobre grasas para energéticos
+    energeticos.sort((a,b) => {
+      const aEsGrano = GRANOS_TRADICIONALES.includes(a.id);
+      const bEsGrano = GRANOS_TRADICIONALES.includes(b.id);
+      if (aEsGrano && !bEsGrano) return -1;
+      if (!aEsGrano && bEsGrano) return 1;
+      return b.enm - a.enm;
+    });
     proteicos.sort((a,b) => b.prot - a.prot);
   }
+
+  // Filtrar ingredientes restringidos por sistema
+  const ingredientesRestringidos = INGREDIENTES_RESTRINGIDOS[sistemaId] || [];
+  energeticos = energeticos.filter(e => !ingredientesRestringidos.includes(e.id));
+  proteicos = proteicos.filter(p => !ingredientesRestringidos.includes(p.id));
 
   let racion = [];
   let ms_acum = 0, enm_acum = 0, pb_acum = 0, peNDF_acum = 0;
@@ -118,14 +172,12 @@ export function formularRacionAvanzada({
     peNDF_acum += msKg * (al.peNDF / 100);
   };
 
-  // 1. Forraje base - priorizar pasto largo sobre silaje
+  // 1. Forraje base
   let forrajePrincipal = forrajes[0];
   let forrajeSecundario = forrajes.length > 1 ? forrajes[1] : null;
-  
   const pctForraje = Math.max(sistema.forraje_min / 100, 0.55);
   let msForraje = cmsBase * pctForraje;
   
-  // 70% del forraje del pasto principal, 30% del secundario (si existe)
   let kgForraje1 = (msForraje * 0.7) / (forrajePrincipal.ms / 100);
   agregar(forrajePrincipal, kgForraje1);
   
@@ -134,45 +186,53 @@ export function formularRacionAvanzada({
     agregar(forrajeSecundario, kgForraje2);
   }
 
-  // 2. Mineral (dosis fija 0.04% del PV)
+  // 2. Mineral
   if (minerales.length) {
     agregar(minerales[0], pvN * 0.0004);
   }
 
-  // 3. Calcular espacio para concentrados
+  // 3. Concentrados
   let msRestante = cmsBase - ms_acum;
   let msConcentradoMax = Math.min(msRestante, cmsBase * (maxConcentrado / 100));
   
-  if (msConcentradoMax > 0.2) {
+  if (msConcentradoMax > 0.2 && !esMisAlimentos) {
     const deficitENm = Math.max(0, ENm_total - enm_acum);
     const deficitPB = Math.max(0, PB_total - pb_acum);
     
-    // En modo automático/óptimo, la proteína debe limitarse estrictamente
     let msEnergia = msConcentradoMax;
     let msProteina = 0;
     
-    if (deficitPB > 50 && proteicos.length > 0) {
-      // Límite de proteína: máximo 6% de la MS total en modo automático (para evitar exceso)
-      const maxMsProteina = cmsBase * (esPersonalizado ? 0.10 : 0.06);
-      msProteina = Math.min(msConcentradoMax * 0.25, maxMsProteina);
-      if (deficitPB < 100) msProteina *= 0.5; // Reducir si no hay mucho déficit
+    if (deficitPB > 80 && proteicos.length > 0) {
+      const maxMsProteina = cmsBase * 0.08;
+      msProteina = Math.min(msConcentradoMax * 0.3, maxMsProteina);
       msEnergia = msConcentradoMax - msProteina;
     }
     
-    // Agregar energético
     if (energeticos.length && msEnergia > 0.1) {
       let kgEnerg = msEnergia / (energeticos[0].ms / 100);
       agregar(energeticos[0], kgEnerg);
     }
     
-    // Agregar proteico solo si hay déficit significativo
-    if (proteicos.length && msProteina > 0.1 && deficitPB > 80) {
+    if (proteicos.length && msProteina > 0.1 && deficitPB > 100) {
       let kgProt = msProteina / (proteicos[0].ms / 100);
       agregar(proteicos[0], kgProt);
     }
   }
 
-  // 4. Completar hasta 4 ingredientes si es necesario
+  // Para modo mis_alimentos, si no hay concentrados suficientes, usar lo que hay
+  if (esMisAlimentos && msRestante > 0.2) {
+    if (energeticos.length && msRestante > 0.1) {
+      let kgEnerg = Math.min(msRestante, cmsBase * 0.3) / (energeticos[0].ms / 100);
+      agregar(energeticos[0], kgEnerg);
+      msRestante = cmsBase - ms_acum;
+    }
+    if (proteicos.length && msRestante > 0.1 && pb_acum < PB_total) {
+      let kgProt = Math.min(msRestante, cmsBase * 0.1) / (proteicos[0].ms / 100);
+      agregar(proteicos[0], kgProt);
+    }
+  }
+
+  // Completar mínimo 4 ingredientes
   if (racion.length < 4) {
     const extras = [...forrajes.slice(2), ...energeticos.slice(1), ...proteicos.slice(1)];
     for (let i = 0; i < extras.length && racion.length < 4; i++) {
@@ -185,7 +245,7 @@ export function formularRacionAvanzada({
   const peNDF_pct = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
   const pctConcentrado = ((ms_acum - racion.filter(r => r.categoria === "forraje").reduce((s,r) => s + r.ms_kg, 0)) / ms_acum) * 100;
 
-  // Score de acidosis (solo se muestra en modo personalizado si hay problema)
+  // Score acidosis
   let scoreAcidosis = 0;
   if (peNDF_pct < 18) scoreAcidosis += 40;
   else if (peNDF_pct < 24) scoreAcidosis += 25;
@@ -201,52 +261,28 @@ export function formularRacionAvanzada({
 
   // GDP estimada
   let gdpEstimada = gdpObjetivo * razaParam.gdp;
-  
-  // Penalizaciones suaves (solo si es necesario)
+  if (esMisAlimentos && (forrajes.length === 0 || energeticos.length === 0)) {
+    gdpEstimada *= 0.5;
+  }
   if (scoreAcidosis > 60) gdpEstimada *= 0.85;
   else if (scoreAcidosis > 40) gdpEstimada *= 0.95;
   
   const cumplimientoENm = enm_acum / ENm_total;
   if (cumplimientoENm < 0.85) gdpEstimada *= cumplimientoENm;
   
-  const cumplimientoPB = pb_acum / PB_total;
-  if (cumplimientoPB > 1.25 && !esPersonalizado) {
-    // En modo automático, si hay exceso de proteína, reducir GDP ligeramente
-    gdpEstimada *= 0.96;
-  }
-  
   gdpEstimada = Math.min(gdpEstimada, sistema.gdp_max * razaParam.gdp);
   gdpEstimada = Math.max(gdpEstimada, sistema.gdp_min * razaParam.gdp * 0.85);
   gdpEstimada = Math.round(gdpEstimada * 100) / 100;
 
-  // ========== ALERTAS: SOLO EN MODO PERSONALIZADO ==========
-  let alertas = [];
-  let explicaciones = [];
-
-  if (esPersonalizado) {
-    // Alertas solo para modo personalizado (el usuario eligió manualmente)
-    if (peNDF_pct < 24) alertas.push(`⚠️ Fibra efectiva baja (peNDF ${peNDF_pct.toFixed(0)}% - riesgo acidosis)`);
-    if (cumplimientoPB > 1.3) alertas.push(`⚠️ Exceso de proteína (${(cumplimientoPB*100).toFixed(0)}% del requerimiento)`);
-    if (cumplimientoENm < 0.85) alertas.push(`⚠️ Energía insuficiente (${(cumplimientoENm*100).toFixed(0)}%)`);
-    if (riesgoAcidosis !== "seguro") alertas.push(`🔴 Riesgo de acidosis: ${riesgoAcidosis.toUpperCase()}`);
-    
-    // Explicaciones para modo personalizado
-    if (peNDF_pct < 24) explicaciones.push("Se requiere aumentar fibra larga (heno o pasto) para mejorar rumia.");
-    if (cumplimientoPB > 1.15) explicaciones.push("Se recomienda reducir la harina de soya o agregar más forraje.");
-    if (cumplimientoENm < 0.85) explicaciones.push("Se necesita más energía (maíz o sorgo).");
-  } else {
-    // En modo automático/óptimo, NO hay alertas. El motor ya hizo bien su trabajo.
-    // Solo mostramos explicaciones informativas (no alertas de error)
-    if (cumplimientoPB > 1.15) {
-      explicaciones.push("La proteína se ajustó automáticamente para evitar excesos.");
-    }
-    if (peNDF_pct > 30) {
-      explicaciones.push("Se priorizaron pastos largos para garantizar fibra efectiva y prevenir acidosis.");
-    }
-  }
-
   const costoDiario = racion.reduce((s,r) => s + r.precio_total, 0);
   const conversion = gdpEstimada > 0 ? (ms_acum / gdpEstimada).toFixed(1) : "N/A";
+
+  // Explicaciones IA
+  let explicaciones = [];
+  if (peNDF_pct > 30) explicaciones.push("Se priorizaron pastos largos para garantizar fibra efectiva y prevenir acidosis.");
+  if (esMisAlimentos && deficiencias.length > 0) {
+    explicaciones.push("Se formuló la mejor dieta posible con los alimentos que seleccionaste.");
+  }
 
   return {
     error: false,
@@ -264,10 +300,10 @@ export function formularRacionAvanzada({
       conversion: conversion,
       riesgo_acidosis: riesgoAcidosis,
       score_acidosis: scoreAcidosis,
-      cumplimiento_proteina: +(cumplimientoPB * 100).toFixed(0),
       cumplimiento_energia: +(cumplimientoENm * 100).toFixed(0)
     },
-    alertas: alertas,
+    alertasCalidad: alertasCalidad,
+    deficiencias: deficiencias,
     explicaciones: explicaciones
   };
 }
