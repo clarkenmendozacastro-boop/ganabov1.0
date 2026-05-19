@@ -1,5 +1,5 @@
 // src/components/racion/CalculadoraRacion.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Card from "../ui/Card";
 import Inp from "../ui/Inp";
 import Sel from "../ui/Sel";
@@ -18,11 +18,14 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
   const [modo, setModo] = useState("optimo");
   const [faseFeedlot, setFaseFeedlot] = useState("inicio");
   const [selIds, setSelIds] = useState(new Set());
+  const [misAlimentosIds, setMisAlimentosIds] = useState(new Set());
   const [busq, setBusq] = useState("");
   const [resultado, setResultado] = useState(null);
   const [showSel, setShowSel] = useState(false);
+  const [showMisAlimentos, setShowMisAlimentos] = useState(false);
   const [modoProfesional, setModoProfesional] = useState(false);
   const [estadosCalidad, setEstadosCalidad] = useState({});
+  const [ingredientesEliminados, setIngredientesEliminados] = useState(new Set());
 
   const todosAl = [...ALIMENTOS_BASE, ...customAl];
   const filtrados = todosAl.filter(a =>
@@ -30,6 +33,12 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
     (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase())
   );
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
+  const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
+
+  // Al cambiar modo, limpiar eliminados
+  useEffect(() => {
+    setIngredientesEliminados(new Set());
+  }, [modo, sistema, raza, peso]);
 
   const toggleSeleccion = (id) => {
     setSelIds(prev => {
@@ -41,40 +50,66 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
     setResultado(null);
   };
 
-  const cambiarCalidad = (id, nuevaCalidad) => {
-    setEstadosCalidad(prev => ({ ...prev, [id]: nuevaCalidad }));
-    if (resultado) recalcular();
+  const toggleMisAlimento = (id) => {
+    setMisAlimentosIds(prev => {
+      const nuevo = new Set(prev);
+      if (nuevo.has(id)) nuevo.delete(id);
+      else nuevo.add(id);
+      return nuevo;
+    });
+    setResultado(null);
   };
 
-  const recalcular = () => {
+  const cambiarCalidad = (id, nuevaCalidad) => {
+    setEstadosCalidad(prev => ({ ...prev, [id]: nuevaCalidad }));
+    setTimeout(() => recalcular(), 10);
+  };
+
+  const eliminarIngrediente = (idAEliminar) => {
+    setIngredientesEliminados(prev => new Set([...prev, idAEliminar]));
+    recalcularConEliminado(idAEliminar);
+  };
+
+  const recalcularConEliminado = (idEliminado) => {
     if (!peso) return;
-    let alimentosUsar = modo === "personalizado" ? seleccionados : todosAl;
+    let alimentosUsar = [];
+    if (modo === "personalizado") {
+      alimentosUsar = seleccionados.filter(a => a.id !== idEliminado);
+    } else if (modo === "mis_alimentos") {
+      alimentosUsar = alimentosSeleccionadosMis.filter(a => a.id !== idEliminado);
+    } else {
+      alimentosUsar = todosAl.filter(a => a.id !== idEliminado && !ingredientesEliminados.has(a.id));
+    }
     if (alimentosUsar.length === 0) return;
     const res = formularRacionAvanzada({
       pv: peso, sistemaId: sistema, razaId: raza,
       alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
       estadosCalidad: estadosCalidad, modo: modo,
-      fase: sistema === "feedlot" ? faseFeedlot : null
+      fase: sistema === "feedlot" ? faseFeedlot : null,
+      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
     });
     if (!res.error) setResultado(res);
-    else alert(res.msg);
   };
 
-  const eliminarIngrediente = (idAEliminar) => {
-    const nuevosAlimentos = modo === "personalizado"
-      ? seleccionados.filter(a => a.id !== idAEliminar)
-      : todosAl.filter(a => a.id !== idAEliminar);
-    if (nuevosAlimentos.length === 0) return alert("No quedan alimentos");
+  const recalcular = () => {
+    if (!peso) return;
+    let alimentosUsar = [];
+    if (modo === "personalizado") {
+      alimentosUsar = seleccionados;
+    } else if (modo === "mis_alimentos") {
+      alimentosUsar = alimentosSeleccionadosMis;
+    } else {
+      alimentosUsar = todosAl;
+    }
+    if (alimentosUsar.length === 0) return;
     const res = formularRacionAvanzada({
       pv: peso, sistemaId: sistema, razaId: raza,
-      alimentosDisponibles: nuevosAlimentos, preciosUsuario: preciosUsr,
+      alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
       estadosCalidad: estadosCalidad, modo: modo,
-      fase: sistema === "feedlot" ? faseFeedlot : null
+      fase: sistema === "feedlot" ? faseFeedlot : null,
+      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
     });
-    if (!res.error) {
-      setResultado(res);
-      if (modo === "personalizado") setSelIds(new Set(nuevosAlimentos.map(a => a.id)));
-    } else alert(res.msg);
+    if (!res.error) setResultado(res);
   };
 
   const calcular = () => {
@@ -82,6 +117,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
       alert("Peso mínimo 80 kg");
       return;
     }
+    setIngredientesEliminados(new Set());
     recalcular();
   };
 
@@ -118,10 +154,11 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
           </div>
         )}
         
-        <div className="flex gap-2">
-          <button onClick={() => setModo("optimo")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "optimo" ? "bg-emerald-600" : "bg-zinc-800"}`}>🚀 Óptimo</button>
-          <button onClick={() => setModo("economico")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "economico" ? "bg-emerald-600" : "bg-zinc-800"}`}>💰 Económico</button>
-          <button onClick={() => setModo("personalizado")} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${modo === "personalizado" ? "bg-emerald-600" : "bg-zinc-800"}`}>✏️ Personalizado</button>
+        <div className="grid grid-cols-4 gap-1">
+          <button onClick={() => setModo("optimo")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "optimo" ? "bg-emerald-600" : "bg-zinc-800"}`}>🚀 Óptimo</button>
+          <button onClick={() => setModo("economico")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "economico" ? "bg-emerald-600" : "bg-zinc-800"}`}>💰 Económico</button>
+          <button onClick={() => setModo("personalizado")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "personalizado" ? "bg-emerald-600" : "bg-zinc-800"}`}>✏️ Personalizado</button>
+          <button onClick={() => setModo("mis_alimentos")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "mis_alimentos" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Mis Alimentos</button>
         </div>
         
         {modo === "personalizado" && (
@@ -150,6 +187,33 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             )}
           </div>
         )}
+
+        {modo === "mis_alimentos" && (
+          <div>
+            <Btn variant="secondary" onClick={() => setShowMisAlimentos(!showMisAlimentos)} className="w-full">
+              {showMisAlimentos ? "Cerrar" : `📦 Seleccionar mis alimentos (${alimentosSeleccionadosMis.length})`}
+            </Btn>
+            {showMisAlimentos && (
+              <div className="max-h-60 overflow-auto mt-2">
+                <Inp placeholder="Buscar..." value={busq} onChange={e => setBusq(e.target.value)} />
+                {CATEGORIAS_ORDER.map(cat => {
+                  const gr = filtrados.filter(a => a.categoria === cat);
+                  if (!gr.length) return null;
+                  return (
+                    <div key={cat}>
+                      <div className="text-xs font-bold mt-2">{TIPO_LABELS[cat]}</div>
+                      {gr.map(al => (
+                        <button key={al.id} onClick={() => toggleMisAlimento(al.id)} className={`w-full text-left p-1 text-sm ${misAlimentosIds.has(al.id) ? "text-emerald-400" : "text-zinc-300"}`}>
+                          {al.nombre} {misAlimentosIds.has(al.id) && "✓"}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         
         <button onClick={() => setModoProfesional(!modoProfesional)} className="text-xs text-sky-400 underline text-right">
           {modoProfesional ? "📘 Modo Simple" : "🔬 Modo Profesional"}
@@ -161,13 +225,24 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
         <Card>
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-white font-bold">📊 Resultados</h3>
-            <Badge color={resultado.gdp_estimada > 1.0 ? "green" : resultado.gdp_estimada > 0.5 ? "yellow" : "orange"}>
+            <Badge color={resultado.gdp_estimada > 0.8 ? "green" : resultado.gdp_estimada > 0.4 ? "yellow" : "orange"}>
               GDP {resultado.gdp_estimada} kg/día
             </Badge>
           </div>
 
-          {resultado.alertas && resultado.alertas.map((a, i) => (
-            <div key={i} className="text-amber-400 text-sm">⚠️ {a}</div>
+          {/* Alertas por calidad mala */}
+          {resultado.alertasCalidad && resultado.alertasCalidad.map((a, i) => (
+            <div key={i} className="border border-red-700 bg-red-950/50 p-2 rounded-lg mb-2">
+              <div className="text-red-400 font-bold text-sm">🚨 ALERTA: {a.nombre} - Calidad "{a.calidad}"</div>
+              <div className="text-red-300 text-xs mt-1">{a.mensaje}</div>
+            </div>
+          ))}
+
+          {/* Deficiencias en modo mis_alimentos */}
+          {resultado.deficiencias && resultado.deficiencias.map((d, i) => (
+            <div key={i} className="border border-amber-700 bg-amber-950/30 p-2 rounded-lg mb-2">
+              <div className="text-amber-400 text-sm font-bold">{d.msg}</div>
+            </div>
           ))}
 
           <div className="text-xs font-bold mt-2">Ingredientes (kg/día)</div>
@@ -180,7 +255,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
                   <select 
                     value={estadosCalidad[al.id] || al.calidad || "Óptimo"}
                     onChange={(e) => cambiarCalidad(al.id, e.target.value)}
-                    className="bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-0.5 text-xs"
+                    className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}
                   >
                     {QUALITY_OPTIONS.map(q => <option key={q} value={q}>{q}</option>)}
                   </select>
@@ -206,7 +281,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
           {modoProfesional && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Cumplimiento energía</span><div className="font-bold text-emerald-400">{resultado.indicadores.cumplimiento_energia}%</div></div>
-              <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Cumplimiento proteína</span><div className="font-bold text-emerald-400">{resultado.indicadores.cumplimiento_proteina}%</div></div>
+              <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Score acidosis</span><div className="font-bold text-emerald-400">{resultado.indicadores.score_acidosis}</div></div>
               <div className="bg-zinc-800 p-2 rounded text-center col-span-2"><span className="text-xs">Conversión alimenticia</span><div className="font-bold text-emerald-400">{resultado.indicadores.conversion}</div></div>
             </div>
           )}
