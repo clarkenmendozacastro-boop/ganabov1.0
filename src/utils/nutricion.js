@@ -1,6 +1,4 @@
-// src/utils/nutricion.js
-// GANABOV ENGINE PRO - VERSIÓN CORREGIDA
-
+// src/utils/nutricion.js - VERSIÓN DEFINITIVA CORREGIDA
 export const FASES_FEEDLOT = {
   inicio: { nombre: "Inicio", dias: 14, conc_max: 40, peNDF_min: 25, forraje_min: 60 },
   desarrollo: { nombre: "Desarrollo", dias: 21, conc_max: 65, peNDF_min: 18, forraje_min: 45 },
@@ -8,8 +6,8 @@ export const FASES_FEEDLOT = {
 };
 
 const CONFIG_SISTEMAS = {
-  pastoril: { nombre: "Pastoril", gdp_min: 0.3, gdp_max: 0.8, cms_pct: 2.2, forraje_min: 70, concentrado_max: 30 },
-  semiIntensivo: { nombre: "Semi-intensivo", gdp_min: 0.8, gdp_max: 1.3, cms_pct: 2.5, forraje_min: 50, concentrado_max: 50 },
+  pastoril: { nombre: "Pastoril", gdp_min: 0.4, gdp_max: 0.7, cms_pct: 2.2, forraje_min: 70, concentrado_max: 30 },
+  semiIntensivo: { nombre: "Semi-intensivo", gdp_min: 0.9, gdp_max: 1.2, cms_pct: 2.5, forraje_min: 60, concentrado_max: 40 },
   feedlot: { nombre: "Feedlot", gdp_min: 1.4, gdp_max: 2.0, cms_pct: 2.8, forraje_min: 30, concentrado_max: 70 }
 };
 
@@ -22,15 +20,14 @@ const FACTORES_CALIDAD = {
 };
 
 const RAZA_PARAMS = {
-  nelore: { consumo: 0.95, gdp: 0.90 },
-  brahman: { consumo: 0.92, gdp: 0.85 },
+  nelore: { consumo: 0.95, gdp: 0.95 },
+  brahman: { consumo: 0.92, gdp: 0.90 },
   angus_brahman: { consumo: 1.02, gdp: 1.00 },
-  senepol: { consumo: 0.98, gdp: 0.88 },
-  criollo: { consumo: 0.85, gdp: 0.55 },
-  otro: { consumo: 0.98, gdp: 0.78 }
+  senepol: { consumo: 0.98, gdp: 0.92 },
+  criollo: { consumo: 0.85, gdp: 0.70 },
+  otro: { consumo: 0.98, gdp: 0.85 }
 };
 
-// Función principal de formulación
 export function formularRacionAvanzada({
   pv, sistemaId, razaId = "otro", alimentosDisponibles,
   preciosUsuario = {}, estadosCalidad = {}, modo = "optimo",
@@ -55,7 +52,7 @@ export function formularRacionAvanzada({
   if (sistemaId === "feedlot" && fase === "inicio") cmsBase *= 0.9;
   else if (sistemaId === "feedlot" && fase === "terminacion") cmsBase *= 1.05;
 
-  // Limitar concentrado según sistema o fase
+  // Límite de concentrado
   let maxConcentrado = sistema.concentrado_max;
   if (sistemaId === "feedlot" && fase && FASES_FEEDLOT[fase]) {
     maxConcentrado = FASES_FEEDLOT[fase].conc_max;
@@ -72,7 +69,7 @@ export function formularRacionAvanzada({
       prot: (al.prot || 8) * factor.prot,
       enm: (al.enm || 1.0) * factor.enm,
       fdn: al.fdn || 50,
-      peNDF: al.peNDF || (al.fdn || 50) * (al.tam_particula ? (al.tam_particula > 2 ? 0.8 : 0.5) : 0.5),
+      peNDF: al.peNDF || (al.fdn || 50) * (al.tam_particula ? Math.min(1, al.tam_particula / 3) : 0.5),
       precio_kg: precio,
       calidad_actual: calidad
     };
@@ -85,17 +82,17 @@ export function formularRacionAvanzada({
   let minerales = alimentos.filter(a => a.categoria === "mineral");
 
   if (forrajes.length === 0) {
-    return { error: false, dietaInsuficiente: true, msg: "No hay forrajes", racion: [], gdp_estimada: -0.3 };
+    return { error: false, dietaInsuficiente: true, msg: "No hay forrajes", racion: [], gdp_estimada: 0.2 };
   }
 
-  // Ordenar según modo
-  const esEconomico = (modo === "economico");
-  if (esEconomico) {
+  // Ordenar forrajes por peNDF (priorizar fibra larga) Y por modo
+  if (modo === "economico") {
     forrajes.sort((a,b) => a.precio_kg - b.precio_kg);
     energeticos.sort((a,b) => a.precio_kg - b.precio_kg);
     proteicos.sort((a,b) => a.precio_kg - b.precio_kg);
   } else {
-    forrajes.sort((a,b) => b.enm - a.enm);
+    // Priorizar peNDF alto para forrajes (fibra larga)
+    forrajes.sort((a,b) => b.peNDF - a.peNDF);
     energeticos.sort((a,b) => b.enm - a.enm);
     proteicos.sort((a,b) => b.prot - a.prot);
   }
@@ -120,15 +117,25 @@ export function formularRacionAvanzada({
     peNDF_acum += msKg * (al.peNDF / 100);
   };
 
-  // 1. Forraje base (proporción según sistema, mínimo 40% siempre)
-  const pctForraje = Math.max(0.40, sistema.forraje_min / 100);
+  // 1. Forraje base - priorizar pasto largo sobre silaje
+  let forrajePrincipal = forrajes[0];
+  let forrajeSecundario = forrajes.length > 1 ? forrajes[1] : null;
+  
+  const pctForraje = Math.max(sistema.forraje_min / 100, 0.55);
   let msForraje = cmsBase * pctForraje;
-  let kgForraje = msForraje / (forrajes[0].ms / 100);
-  agregar(forrajes[0], kgForraje);
+  
+  // 70% del forraje del pasto principal, 30% del secundario (si existe)
+  let kgForraje1 = (msForraje * 0.7) / (forrajePrincipal.ms / 100);
+  agregar(forrajePrincipal, kgForraje1);
+  
+  if (forrajeSecundario) {
+    let kgForraje2 = (msForraje * 0.3) / (forrajeSecundario.ms / 100);
+    agregar(forrajeSecundario, kgForraje2);
+  }
 
-  // 2. Mineral (dosis fija 0.05% del PV)
+  // 2. Mineral (dosis fija 0.04% del PV)
   if (minerales.length) {
-    agregar(minerales[0], pvN * 0.0005);
+    agregar(minerales[0], pvN * 0.0004);
   }
 
   // 3. Calcular espacio para concentrados
@@ -136,25 +143,17 @@ export function formularRacionAvanzada({
   let msConcentradoMax = Math.min(msRestante, cmsBase * (maxConcentrado / 100));
   
   if (msConcentradoMax > 0.2) {
-    // Calcular déficit de energía y proteína
     const deficitENm = Math.max(0, ENm_total - enm_acum);
     const deficitPB = Math.max(0, PB_total - pb_acum);
     
-    // Determinar proporción energía/proteína en el concentrado
-    let pctEnergia = 0.6, pctProteina = 0.4;
-    if (deficitENm > 0 && deficitPB > 0) {
-      const ratio = deficitENm / (deficitPB / 1000);
-      pctEnergia = Math.min(0.8, Math.max(0.4, ratio / (ratio + 1)));
-      pctProteina = 1 - pctEnergia;
-    }
+    // Si no hay déficit de proteína, no agregar proteico
+    let msEnergia = msConcentradoMax;
+    let msProteina = 0;
     
-    let msEnergia = msConcentradoMax * pctEnergia;
-    let msProteina = msConcentradoMax * pctProteina;
-    
-    // Limitar proteína máxima (no más del 15% de la MS total)
-    const maxMsProteina = cmsBase * 0.12;
-    if (msProteina > maxMsProteina) {
-      msProteina = maxMsProteina;
+    if (deficitPB > 50 && proteicos.length > 0) {
+      // La proteína no debe exceder el 8% de la MS total para evitar exceso
+      const maxMsProteina = cmsBase * 0.08;
+      msProteina = Math.min(msConcentradoMax * 0.3, maxMsProteina, deficitPB / (proteicos[0].prot / 100 * 10));
       msEnergia = msConcentradoMax - msProteina;
     }
     
@@ -164,7 +163,7 @@ export function formularRacionAvanzada({
       agregar(energeticos[0], kgEnerg);
     }
     
-    // Agregar proteico (solo si es necesario)
+    // Agregar proteico solo si hay déficit
     if (proteicos.length && msProteina > 0.1 && deficitPB > 50) {
       let kgProt = msProteina / (proteicos[0].ms / 100);
       agregar(proteicos[0], kgProt);
@@ -173,7 +172,7 @@ export function formularRacionAvanzada({
 
   // 4. Completar hasta 4 ingredientes si es necesario
   if (racion.length < 4) {
-    const extras = [...forrajes.slice(1), ...energeticos.slice(1), ...proteicos.slice(1)];
+    const extras = [...forrajes.slice(2), ...energeticos.slice(1), ...proteicos.slice(1)];
     for (let i = 0; i < extras.length && racion.length < 4; i++) {
       agregar(extras[i], 0.3);
     }
@@ -186,44 +185,53 @@ export function formularRacionAvanzada({
 
   // Score de acidosis
   let scoreAcidosis = 0;
-  if (peNDF_pct < 15) scoreAcidosis += 40;
-  else if (peNDF_pct < 22) scoreAcidosis += 25;
-  else if (peNDF_pct < 28) scoreAcidosis += 10;
-  if (pctConcentrado > 70) scoreAcidosis += 30;
-  else if (pctConcentrado > 55) scoreAcidosis += 20;
-  else if (pctConcentrado > 40) scoreAcidosis += 10;
+  if (peNDF_pct < 18) scoreAcidosis += 40;
+  else if (peNDF_pct < 24) scoreAcidosis += 25;
+  else if (peNDF_pct < 30) scoreAcidosis += 10;
+  if (pctConcentrado > 60) scoreAcidosis += 30;
+  else if (pctConcentrado > 45) scoreAcidosis += 15;
+  else if (pctConcentrado > 35) scoreAcidosis += 5;
   
   let riesgoAcidosis = "seguro";
   if (scoreAcidosis >= 70) riesgoAcidosis = "crítico";
   else if (scoreAcidosis >= 50) riesgoAcidosis = "alto";
   else if (scoreAcidosis >= 25) riesgoAcidosis = "precaución";
 
-  // GDP estimada (corregida)
+  // GDP estimada CORREGIDA
   let gdpEstimada = gdpObjetivo * razaParam.gdp;
-  if (scoreAcidosis > 50) gdpEstimada *= 0.6;
-  else if (scoreAcidosis > 25) gdpEstimada *= 0.85;
   
+  // Penalización por acidosis
+  if (scoreAcidosis > 60) gdpEstimada *= 0.7;
+  else if (scoreAcidosis > 40) gdpEstimada *= 0.85;
+  else if (scoreAcidosis > 20) gdpEstimada *= 0.95;
+  
+  // Penalización por energía baja
   const cumplimientoENm = enm_acum / ENm_total;
-  const cumplimientoPB = pb_acum / PB_total;
-  if (cumplimientoENm < 0.85) gdpEstimada *= cumplimientoENm;
-  if (cumplimientoPB > 1.15) gdpEstimada *= 0.95;
-  if (cumplimientoPB < 0.8) gdpEstimada *= cumplimientoPB;
+  if (cumplimientoENm < 0.9) gdpEstimada *= cumplimientoENm;
   
+  // Penalización por exceso de proteína (reduce eficiencia)
+  const cumplimientoPB = pb_acum / PB_total;
+  if (cumplimientoPB > 1.15) gdpEstimada *= 0.92;
+  if (cumplimientoPB < 0.85) gdpEstimada *= cumplimientoPB;
+  
+  // Ajuste final
+  gdpEstimada = Math.min(gdpEstimada, sistema.gdp_max * razaParam.gdp);
+  gdpEstimada = Math.max(gdpEstimada, sistema.gdp_min * razaParam.gdp * 0.8);
   gdpEstimada = Math.round(gdpEstimada * 100) / 100;
-  if (gdpEstimada < 0) gdpEstimada = 0;
 
   // Alertas
   let alertas = [];
-  if (peNDF_pct < 22) alertas.push(`⚠️ Fibra efectiva baja (peNDF ${peNDF_pct.toFixed(0)}% - riesgo acidosis)`);
+  if (peNDF_pct < 24) alertas.push(`⚠️ Fibra efectiva baja (peNDF ${peNDF_pct.toFixed(0)}% - riesgo acidosis)`);
   if (cumplimientoPB > 1.2) alertas.push(`⚠️ Exceso de proteína (${(cumplimientoPB*100).toFixed(0)}% del requerimiento)`);
   if (cumplimientoENm < 0.85) alertas.push(`⚠️ Energía insuficiente (${(cumplimientoENm*100).toFixed(0)}%)`);
   if (riesgoAcidosis !== "seguro") alertas.push(`🔴 Riesgo de acidosis: ${riesgoAcidosis.toUpperCase()}`);
 
   // Explicaciones IA
   let explicaciones = [];
-  if (peNDF_pct < 22) explicaciones.push("Se requiere aumentar fibra larga (heno o pasto) para mejorar rumia.");
+  if (peNDF_pct < 24) explicaciones.push("Se requiere aumentar fibra larga (heno o pasto) para mejorar rumia y ganancia.");
   if (cumplimientoPB > 1.15) explicaciones.push("Se redujo la harina de soya por exceso de proteína.");
   if (pctConcentrado > maxConcentrado) explicaciones.push(`Se limitó el concentrado al ${maxConcentrado}% según el sistema.`);
+  if (cumplimientoENm < 0.9) explicaciones.push("Se necesita más energía (maíz o sorgo) para alcanzar el potencial de ganancia.");
 
   const costoDiario = racion.reduce((s,r) => s + r.precio_total, 0);
   const conversion = gdpEstimada > 0 ? (ms_acum / gdpEstimada).toFixed(1) : "N/A";
