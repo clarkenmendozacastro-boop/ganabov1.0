@@ -1,5 +1,8 @@
 // src/components/racion/CalculadoraRacion.jsx
 import React, { useState, useEffect } from "react";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "../../firebase";
+import { userCol } from "../../utils/helpers";
 import Card from "../ui/Card";
 import Inp from "../ui/Inp";
 import Sel from "../ui/Sel";
@@ -11,7 +14,15 @@ import { formularRacionAvanzada, FASES_FEEDLOT } from "../../utils/nutricion";
 
 const QUALITY_OPTIONS = ["Óptimo", "Bueno", "Regular", "Bajo", "Muy deteriorado"];
 
-const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {}, animales = [], grupos = [] }) => {
+const CalculadoraRacion = ({ 
+  preciosUsr = {}, 
+  customAl = [], 
+  minsAlimentos = {}, 
+  animales = [], 
+  grupos = [],
+  uid,
+  onFormulacionGuardada 
+}) => {
   // Estados principales
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
@@ -28,11 +39,18 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
   const [estadosCalidad, setEstadosCalidad] = useState({});
   const [ingredientesEliminados, setIngredientesEliminados] = useState(new Set());
   
-  // NUEVOS ESTADOS PARA FASE 1: Multiplicador de animales y días
+  // Estados para Fase 1: Multiplicador de animales y días
   const [numAnimales, setNumAnimales] = useState(1);
   const [numDias, setNumDias] = useState(1);
   const [mostrarMultiplicador, setMostrarMultiplicador] = useState(false);
-  const [modoMultiplicador, setModoMultiplicador] = useState("un_animal"); // "un_animal" o "lote"
+  const [modoMultiplicador, setModoMultiplicador] = useState("un_animal");
+
+  // Estados para Fase 2: Guardar formulación
+  const [tipoDestino, setTipoDestino] = useState("animal");
+  const [animalSeleccionado, setAnimalSeleccionado] = useState("");
+  const [grupoSeleccionado, setGrupoSeleccionado] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [mensajeGuardado, setMensajeGuardado] = useState(null);
 
   const todosAl = [...ALIMENTOS_BASE, ...customAl];
   const filtrados = todosAl.filter(a =>
@@ -41,6 +59,21 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
   );
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
+
+  // Efecto para cargar peso desde grupo (Fase 3)
+  useEffect(() => {
+    const grupoData = localStorage.getItem("grupoFormula");
+    if (grupoData) {
+      try {
+        const { peso: pesoGrupo, grupoId, grupoNombre } = JSON.parse(grupoData);
+        setPeso(pesoGrupo.toString());
+        localStorage.removeItem("grupoFormula");
+        alert(`📦 Formulando para el grupo "${grupoNombre}" con peso promedio ${pesoGrupo} kg`);
+      } catch (e) {
+        console.error("Error al leer datos del grupo:", e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     setIngredientesEliminados(new Set());
@@ -127,22 +160,90 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
     recalcular();
   };
 
+  // Guardar formulación
+  const guardarFormulacion = async () => {
+    if (!resultado) {
+      alert("Primero calcula una ración");
+      return;
+    }
+    
+    let destinoId = null;
+    let destinoNombre = null;
+    let destinoTipo = null;
+    
+    if (tipoDestino === "animal") {
+      if (!animalSeleccionado) {
+        alert("Selecciona un animal");
+        return;
+      }
+      const animal = animales.find(a => a._id === animalSeleccionado);
+      if (!animal) return;
+      destinoId = animal._id;
+      destinoNombre = animal.nombre;
+      destinoTipo = "animal";
+    } else {
+      if (!grupoSeleccionado) {
+        alert("Selecciona un grupo");
+        return;
+      }
+      const grupo = grupos.find(g => g.id === grupoSeleccionado);
+      if (!grupo) return;
+      destinoId = grupo.id;
+      destinoNombre = grupo.nombre;
+      destinoTipo = "grupo";
+    }
+    
+    setGuardando(true);
+    setMensajeGuardado(null);
+    
+    try {
+      const formulacionData = {
+        fecha: new Date().toISOString(),
+        peso_animal: parseFloat(peso),
+        raza: raza,
+        sistema: sistema,
+        modo: modo,
+        fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
+        gdp_estimada: resultado.gdp_estimada,
+        indicadores: resultado.indicadores,
+        ingredientes: resultado.racion.map(r => ({
+          id: r.id,
+          nombre: r.nombre,
+          categoria: r.categoria,
+          kg_dia: r.kg_dia,
+          ms_kg: r.ms_kg,
+          calidad: r.calidad
+        })),
+        alertas: resultado.alertasCalidad || [],
+        deficiencias: resultado.deficiencias || [],
+        destino_id: destinoId,
+        destino_nombre: destinoNombre,
+        destino_tipo: destinoTipo,
+        num_animales: mostrarMultiplicador ? numAnimales : 1,
+        num_dias: mostrarMultiplicador ? numDias : 1,
+        createdAt: new Date()
+      };
+      
+      await addDoc(collection(db, "users", uid, "raciones_historicas"), formulacionData);
+      
+      setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre}`);
+      if (onFormulacionGuardada) onFormulacionGuardada();
+      
+      setTimeout(() => setMensajeGuardado(null), 3000);
+    } catch (error) {
+      console.error("Error guardando formulación:", error);
+      setMensajeGuardado("❌ Error al guardar");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   const getRiesgoColor = (riesgo) => {
     if (riesgo === "seguro") return "green";
     if (riesgo === "precaución") return "yellow";
     if (riesgo === "alto") return "orange";
     if (riesgo === "crítico") return "red";
     return "gray";
-  };
-
-  // Función para calcular cantidades para lote
-  const getCantidadLote = (kgPorAnimal) => {
-    const totalKg = kgPorAnimal * numAnimales;
-    return {
-      totalKg: totalKg.toFixed(2),
-      totalKgPeriodo: (totalKg * numDias).toFixed(2),
-      paraDias: numDias
-    };
   };
 
   return (
@@ -177,7 +278,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
           <button onClick={() => setModo("mis_alimentos")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "mis_alimentos" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Mis Alimentos</button>
         </div>
         
-        {/* NUEVO: Selector de modo de cálculo (un animal o lote) */}
+        {/* Selector de modo de cálculo (un animal o lote) */}
         <div className="flex gap-2">
           <button 
             onClick={() => { setModoMultiplicador("un_animal"); setMostrarMultiplicador(false); }}
@@ -200,7 +301,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
               type="number" 
               value={numAnimales} 
               onChange={e => setNumAnimales(Math.max(1, parseInt(e.target.value) || 1))}
-              min="1"
+              min="1" 
               max="1000"
             />
             <Inp 
@@ -208,7 +309,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
               type="number" 
               value={numDias} 
               onChange={e => setNumDias(Math.max(1, parseInt(e.target.value) || 1))}
-              min="1"
+              min="1" 
               max="90"
             />
           </div>
@@ -267,6 +368,57 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
             )}
           </div>
         )}
+        
+        {/* Guardar formulación */}
+        <div className="border-t border-zinc-700 pt-3 mt-1">
+          <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">📌 Guardar formulación</div>
+          <div className="flex gap-2 mb-2">
+            <button 
+              onClick={() => setTipoDestino("animal")}
+              className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "animal" ? "bg-emerald-600" : "bg-zinc-800"}`}
+            >
+              🐄 Animal
+            </button>
+            <button 
+              onClick={() => setTipoDestino("grupo")}
+              className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "grupo" ? "bg-emerald-600" : "bg-zinc-800"}`}
+            >
+              📦 Grupo
+            </button>
+          </div>
+          
+          {tipoDestino === "animal" && (
+            <Sel value={animalSeleccionado} onChange={e => setAnimalSeleccionado(e.target.value)} className="w-full">
+              <option value="">Seleccionar animal</option>
+              {animales.map(animal => (
+                <option key={animal._id} value={animal._id}>{animal.nombre} - {animal.peso_inicial}kg</option>
+              ))}
+            </Sel>
+          )}
+          
+          {tipoDestino === "grupo" && (
+            <Sel value={grupoSeleccionado} onChange={e => setGrupoSeleccionado(e.target.value)} className="w-full">
+              <option value="">Seleccionar grupo</option>
+              {grupos.map(grupo => (
+                <option key={grupo.id} value={grupo.id}>{grupo.nombre} - {grupo.animales?.length || 0} animales</option>
+              ))}
+            </Sel>
+          )}
+          
+          <Btn 
+            onClick={guardarFormulacion} 
+            disabled={guardando || !resultado}
+            className="w-full mt-2 py-2 text-sm"
+            variant="secondary"
+          >
+            {guardando ? "Guardando..." : "💾 Guardar formulación"}
+          </Btn>
+          {mensajeGuardado && (
+            <div className={`text-xs text-center mt-2 ${mensajeGuardado.includes("✅") ? "text-emerald-400" : "text-red-400"}`}>
+              {mensajeGuardado}
+            </div>
+          )}
+        </div>
         
         <button onClick={() => setModoProfesional(!modoProfesional)} className="text-xs text-sky-400 underline text-right">
           {modoProfesional ? "📘 Modo Simple" : "🔬 Modo Profesional"}
@@ -345,7 +497,6 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {},
             );
           })}
 
-          {/* Resumen de totales para lote */}
           {mostrarMultiplicador && (
             <div className="mt-3 bg-emerald-950/30 p-2 rounded-lg border border-emerald-700/50">
               <div className="text-emerald-400 text-xs font-bold mb-1">📊 Resumen para {numAnimales} animales durante {numDias} días</div>
