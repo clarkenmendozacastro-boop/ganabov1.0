@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
-import { getDocs, setDoc, collection, query, where, orderBy } from "firebase/firestore";
-import { db } from "../firebase";
+import { getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import Badge from "../components/ui/Badge";
 import Dashboard from "../components/dashboard/Dashboard";
 import ListaAnimales from "../components/animales/ListaAnimales";
@@ -12,6 +11,8 @@ import DetalleAnimal from "../components/animales/DetalleAnimal";
 import CalculadoraRacion from "../components/racion/CalculadoraRacion";
 import GestionAlimentos from "../components/alimentos/GestionAlimentos";
 import PerfilUsuario from "../components/auth/PerfilUsuario";
+import ListaGrupos from "../components/grupos/ListaGrupos";
+import DetalleGrupo from "../components/grupos/DetalleGrupo";
 import { ADMIN_EMAIL, userCol, userDoc } from "../utils/helpers";
 
 const Home = () => {
@@ -24,7 +25,9 @@ const Home = () => {
   const [customAl, setCustomAl] = useState([]);
   const [minsAlimentos, setMinsAlimentos] = useState({});
   const [dataLoading, setDataLoading] = useState(false);
-  const [grupos, setGrupos] = useState([]); // Estado para grupos (Fase 3)
+  const [grupos, setGrupos] = useState([]);
+  const [grupoSel, setGrupoSel] = useState(null);
+  const [showGrupoDetalle, setShowGrupoDetalle] = useState(false);
 
   const isAdmin = user?.email === ADMIN_EMAIL;
   const uid = user?.uid;
@@ -75,7 +78,7 @@ const Home = () => {
         });
         setMinsAlimentos(mins);
         
-        // Cargar grupos (si existen en la base de datos)
+        // Cargar grupos
         try {
           const gruposSnap = await getDocs(userCol(uid, "grupos"));
           setGrupos(gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -119,6 +122,23 @@ const Home = () => {
     setAnimalSel(null);
   };
 
+  const handleUpdateGrupo = (grupoActualizado) => {
+    setGrupos(grupos.map(g => g.id === grupoActualizado.id ? grupoActualizado : g));
+    if (grupoSel?.id === grupoActualizado.id) {
+      setGrupoSel(grupoActualizado);
+    }
+  };
+
+  const handleFormularParaGrupo = (pesoPromedio, grupo) => {
+    // Guardar en localStorage para que la calculadora lo recupere
+    localStorage.setItem("grupoFormula", JSON.stringify({ 
+      peso: pesoPromedio, 
+      grupoId: grupo.id, 
+      grupoNombre: grupo.nombre 
+    }));
+    setNav("racion");
+  };
+
   const handleSalir = async () => {
     await signOut(auth);
     setNav("dashboard");
@@ -127,6 +147,7 @@ const Home = () => {
   const navItems = [
     { id: "dashboard", i: "🏠", l: "Inicio" },
     { id: "animales", i: "🐄", l: "Animales" },
+    { id: "grupos", i: "📦", l: "Grupos" },
     { id: "racion", i: "🔬", l: "Ración" },
     { id: "alimentos", i: "📦", l: "Alimentos" },
   ];
@@ -202,7 +223,37 @@ const Home = () => {
           />
         )}
         
-        {/* Calculadora de Ración con todos los props necesarios */}
+        {/* Sección de grupos */}
+        {nav === "grupos" && !showGrupoDetalle && (
+          <ListaGrupos
+            grupos={grupos}
+            setGrupos={setGrupos}
+            animales={animales}
+            uid={uid}
+            onNav={setNav}
+            onSelectGrupo={(grupo) => {
+              setGrupoSel(grupo);
+              setShowGrupoDetalle(true);
+              setNav("grupos");
+            }}
+          />
+        )}
+        
+        {nav === "grupos" && showGrupoDetalle && grupoSel && (
+          <DetalleGrupo
+            grupo={grupoSel}
+            animales={animales}
+            uid={uid}
+            onBack={() => {
+              setShowGrupoDetalle(false);
+              setGrupoSel(null);
+            }}
+            onUpdate={handleUpdateGrupo}
+            onFormular={handleFormularParaGrupo}
+          />
+        )}
+        
+        {/* Calculadora de Ración */}
         {nav === "racion" && (
           <CalculadoraRacion
             preciosUsr={preciosUsr}
@@ -212,7 +263,6 @@ const Home = () => {
             grupos={grupos}
             uid={uid}
             onFormulacionGuardada={() => {
-              // Opcional: refrescar algo después de guardar
               console.log("Formulación guardada");
             }}
           />
@@ -240,7 +290,7 @@ const Home = () => {
             key={item.id}
             onClick={() => setNav(item.id)}
             className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${
-              nav === item.id || (nav === "detalle" && item.id === "animales")
+              nav === item.id || (nav === "detalle" && item.id === "animales") || (nav === "grupos" && item.id === "grupos")
                 ? "text-emerald-400"
                 : "text-zinc-600 hover:text-zinc-400"
             }`}
