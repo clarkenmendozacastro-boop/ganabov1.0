@@ -11,7 +11,8 @@ import { formularRacionAvanzada, FASES_FEEDLOT } from "../../utils/nutricion";
 
 const QUALITY_OPTIONS = ["Óptimo", "Bueno", "Regular", "Bajo", "Muy deteriorado"];
 
-const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} }) => {
+const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {}, animales = [], grupos = [] }) => {
+  // Estados principales
   const [peso, setPeso] = useState("");
   const [raza, setRaza] = useState("otro");
   const [sistema, setSistema] = useState("semiIntensivo");
@@ -26,6 +27,12 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
   const [modoProfesional, setModoProfesional] = useState(false);
   const [estadosCalidad, setEstadosCalidad] = useState({});
   const [ingredientesEliminados, setIngredientesEliminados] = useState(new Set());
+  
+  // NUEVOS ESTADOS PARA FASE 1: Multiplicador de animales y días
+  const [numAnimales, setNumAnimales] = useState(1);
+  const [numDias, setNumDias] = useState(1);
+  const [mostrarMultiplicador, setMostrarMultiplicador] = useState(false);
+  const [modoMultiplicador, setModoMultiplicador] = useState("un_animal"); // "un_animal" o "lote"
 
   const todosAl = [...ALIMENTOS_BASE, ...customAl];
   const filtrados = todosAl.filter(a =>
@@ -35,7 +42,6 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
 
-  // Al cambiar modo, limpiar eliminados
   useEffect(() => {
     setIngredientesEliminados(new Set());
   }, [modo, sistema, raza, peso]);
@@ -129,6 +135,16 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
     return "gray";
   };
 
+  // Función para calcular cantidades para lote
+  const getCantidadLote = (kgPorAnimal) => {
+    const totalKg = kgPorAnimal * numAnimales;
+    return {
+      totalKg: totalKg.toFixed(2),
+      totalKgPeriodo: (totalKg * numDias).toFixed(2),
+      paraDias: numDias
+    };
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <h2 className="text-2xl font-black text-white">🐄 GanaBov Engine Pro</h2>
@@ -160,6 +176,43 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
           <button onClick={() => setModo("personalizado")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "personalizado" ? "bg-emerald-600" : "bg-zinc-800"}`}>✏️ Personalizado</button>
           <button onClick={() => setModo("mis_alimentos")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "mis_alimentos" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Mis Alimentos</button>
         </div>
+        
+        {/* NUEVO: Selector de modo de cálculo (un animal o lote) */}
+        <div className="flex gap-2">
+          <button 
+            onClick={() => { setModoMultiplicador("un_animal"); setMostrarMultiplicador(false); }}
+            className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "un_animal" && !mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}
+          >
+            🐄 Un animal
+          </button>
+          <button 
+            onClick={() => { setModoMultiplicador("lote"); setMostrarMultiplicador(true); }}
+            className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "lote" && mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}
+          >
+            📦 Lote / varios días
+          </button>
+        </div>
+
+        {mostrarMultiplicador && (
+          <div className="grid grid-cols-2 gap-3">
+            <Inp 
+              label="Número de animales" 
+              type="number" 
+              value={numAnimales} 
+              onChange={e => setNumAnimales(Math.max(1, parseInt(e.target.value) || 1))}
+              min="1"
+              max="1000"
+            />
+            <Inp 
+              label="Número de días" 
+              type="number" 
+              value={numDias} 
+              onChange={e => setNumDias(Math.max(1, parseInt(e.target.value) || 1))}
+              min="1"
+              max="90"
+            />
+          </div>
+        )}
         
         {modo === "personalizado" && (
           <div>
@@ -230,7 +283,6 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             </Badge>
           </div>
 
-          {/* Alertas por calidad mala */}
           {resultado.alertasCalidad && resultado.alertasCalidad.map((a, i) => (
             <div key={i} className="border border-red-700 bg-red-950/50 p-2 rounded-lg mb-2">
               <div className="text-red-400 font-bold text-sm">🚨 ALERTA: {a.nombre} - Calidad "{a.calidad}"</div>
@@ -238,36 +290,82 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             </div>
           ))}
 
-          {/* Deficiencias en modo mis_alimentos */}
           {resultado.deficiencias && resultado.deficiencias.map((d, i) => (
             <div key={i} className="border border-amber-700 bg-amber-950/30 p-2 rounded-lg mb-2">
               <div className="text-amber-400 text-sm font-bold">{d.msg}</div>
             </div>
           ))}
 
-          <div className="text-xs font-bold mt-2">Ingredientes (kg/día)</div>
-          {resultado.racion.map((al, i) => (
-            <div key={i} className="flex justify-between items-center border-b border-zinc-700 py-2">
-              <div className="flex-1">
-                <span className="text-sm">{al.nombre}</span>
-                <span className="text-xs text-zinc-500 ml-2">({al.categoria})</span>
-                <div className="flex gap-2 mt-1">
-                  <select 
-                    value={estadosCalidad[al.id] || al.calidad || "Óptimo"}
-                    onChange={(e) => cambiarCalidad(al.id, e.target.value)}
-                    className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}
-                  >
-                    {QUALITY_OPTIONS.map(q => <option key={q} value={q}>{q}</option>)}
-                  </select>
-                  <button onClick={() => eliminarIngrediente(al.id)} className="text-red-500 text-xs hover:text-red-400">🗑️ Eliminar</button>
+          <div className="text-xs font-bold mt-2">
+            Ingredientes {mostrarMultiplicador ? `(${numAnimales} animales × ${numDias} días)` : "(por animal/día)"}
+          </div>
+          
+          {resultado.racion.map((al, i) => {
+            const kgPorAnimal = al.kg_dia;
+            const loteTotal = mostrarMultiplicador ? (kgPorAnimal * numAnimales).toFixed(2) : null;
+            const periodoTotal = mostrarMultiplicador ? (kgPorAnimal * numAnimales * numDias).toFixed(2) : null;
+            
+            return (
+              <div key={i} className="flex justify-between items-center border-b border-zinc-700 py-2">
+                <div className="flex-1">
+                  <span className="text-sm">{al.nombre}</span>
+                  <span className="text-xs text-zinc-500 ml-2">({al.categoria})</span>
+                  <div className="flex gap-2 mt-1">
+                    <select 
+                      value={estadosCalidad[al.id] || al.calidad || "Óptimo"}
+                      onChange={(e) => cambiarCalidad(al.id, e.target.value)}
+                      className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}
+                    >
+                      {QUALITY_OPTIONS.map(q => <option key={q} value={q}>{q}</option>)}
+                    </select>
+                    <button onClick={() => eliminarIngrediente(al.id)} className="text-red-500 text-xs hover:text-red-400">🗑️ Eliminar</button>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {mostrarMultiplicador ? (
+                    <>
+                      <div className="text-emerald-400 font-bold">
+                        {periodoTotal} kg <span className="text-xs text-zinc-500">(total)</span>
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        {loteTotal} kg/día para {numAnimales} animales
+                      </div>
+                      <div className="text-xs text-zinc-600">
+                        {kgPorAnimal} kg/animal/día
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-emerald-400 font-bold">{kgPorAnimal} kg</div>
+                      <div className="text-xs text-zinc-500">{al.ms_kg} kg MS</div>
+                    </>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-emerald-400 font-bold">{al.kg_dia} kg</div>
-                <div className="text-xs text-zinc-500">{al.ms_kg} kg MS</div>
+            );
+          })}
+
+          {/* Resumen de totales para lote */}
+          {mostrarMultiplicador && (
+            <div className="mt-3 bg-emerald-950/30 p-2 rounded-lg border border-emerald-700/50">
+              <div className="text-emerald-400 text-xs font-bold mb-1">📊 Resumen para {numAnimales} animales durante {numDias} días</div>
+              <div className="grid grid-cols-2 gap-1 text-xs">
+                {resultado.racion.map((al, i) => {
+                  const periodoTotal = (al.kg_dia * numAnimales * numDias).toFixed(2);
+                  return (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-zinc-400">{al.nombre.split("(")[0].trim()}:</span>
+                      <span className="text-emerald-400 font-bold">{periodoTotal} kg</span>
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between border-t border-emerald-700/50 pt-1 mt-1">
+                  <span className="text-zinc-400">Costo total:</span>
+                  <span className="text-emerald-400 font-bold">Bs. {(resultado.indicadores.costo_dia * numAnimales * numDias).toFixed(2)}</span>
+                </div>
               </div>
             </div>
-          ))}
+          )}
 
           <div className="grid grid-cols-2 gap-2 mt-3">
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">MS total</span><br/><b>{resultado.indicadores.ms_total_kg} kg</b> ({resultado.indicadores.ms_pct_pv}% PV)</div>
@@ -275,7 +373,7 @@ const CalculadoraRacion = ({ preciosUsr = {}, customAl = [], minsAlimentos = {} 
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">ENm aportada</span><br/><b>{resultado.indicadores.enm_aportada}</b> / {resultado.indicadores.enm_requerida} Mcal</div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">PB aportada</span><br/><b>{resultado.indicadores.pb_aportada}</b> / {resultado.indicadores.pb_requerida} g</div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Riesgo acidosis</span><br/><Badge color={getRiesgoColor(resultado.indicadores.riesgo_acidosis)}>{resultado.indicadores.riesgo_acidosis}</Badge></div>
-            <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Costo/día</span><br/><b>Bs. {resultado.indicadores.costo_dia}</b></div>
+            <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Costo/día</span><br/><b>Bs. {resultado.indicadores.costo_dia}</b> {mostrarMultiplicador && <span className="text-xs text-zinc-500">/animal</span>}</div>
           </div>
 
           {modoProfesional && (
