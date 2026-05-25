@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
-import { getDocs, setDoc } from "firebase/firestore";
+import { getDocs, setDoc, collection, query, where, orderBy } from "firebase/firestore";
+import { db } from "../firebase";
 import Badge from "../components/ui/Badge";
 import Dashboard from "../components/dashboard/Dashboard";
 import ListaAnimales from "../components/animales/ListaAnimales";
@@ -11,7 +12,7 @@ import DetalleAnimal from "../components/animales/DetalleAnimal";
 import CalculadoraRacion from "../components/racion/CalculadoraRacion";
 import GestionAlimentos from "../components/alimentos/GestionAlimentos";
 import PerfilUsuario from "../components/auth/PerfilUsuario";
-import { ADMIN_EMAIL, userCol } from "../utils/helpers";
+import { ADMIN_EMAIL, userCol, userDoc } from "../utils/helpers";
 
 const Home = () => {
   const [user, setUser] = useState(null);
@@ -23,10 +24,12 @@ const Home = () => {
   const [customAl, setCustomAl] = useState([]);
   const [minsAlimentos, setMinsAlimentos] = useState({});
   const [dataLoading, setDataLoading] = useState(false);
+  const [grupos, setGrupos] = useState([]); // Estado para grupos (Fase 3)
 
   const isAdmin = user?.email === ADMIN_EMAIL;
   const uid = user?.uid;
 
+  // Autenticación
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -35,33 +38,51 @@ const Home = () => {
     return () => unsub();
   }, []);
 
+  // Cargar datos del usuario
   useEffect(() => {
     if (!uid) {
       setAnimales([]);
       setPreciosUsr({});
       setCustomAl([]);
       setMinsAlimentos({});
+      setGrupos([]);
       return;
     }
     const cargar = async () => {
       setDataLoading(true);
       try {
+        // Cargar animales
         const animSnap = await getDocs(userCol(uid, "animales"));
         setAnimales(animSnap.docs.map((d) => ({ _id: d.id, ...d.data() })));
+        
+        // Cargar precios
         const precSnap = await getDocs(userCol(uid, "precios"));
         const precios = {};
         precSnap.docs.forEach((d) => {
           precios[d.id] = d.data().valor;
         });
         setPreciosUsr(precios);
+        
+        // Cargar alimentos personalizados
         const alSnap = await getDocs(userCol(uid, "alimentos_custom"));
         setCustomAl(alSnap.docs.map((d) => ({ _id: d.id, id: d.id, ...d.data() })));
+        
+        // Cargar mínimos de alimentos
         const minsSnap = await getDocs(userCol(uid, "minimos"));
         const mins = {};
         minsSnap.docs.forEach((d) => {
           mins[d.id] = d.data().valor;
         });
         setMinsAlimentos(mins);
+        
+        // Cargar grupos (si existen en la base de datos)
+        try {
+          const gruposSnap = await getDocs(userCol(uid, "grupos"));
+          setGrupos(gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        } catch (e) {
+          console.log("No hay grupos creados aún");
+          setGrupos([]);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -71,9 +92,10 @@ const Home = () => {
   }, [uid]);
 
   const handlePrecio = async (id, val) => {
-    await setDoc(userCol(uid, "precios", id), { valor: val, updatedAt: new Date() });
+    await setDoc(userDoc(uid, "precios", id), { valor: val, updatedAt: new Date() });
     setPreciosUsr((p) => ({ ...p, [id]: val }));
   };
+
   const handleSetMinimo = async (id, val) => {
     if (val === 0) {
       await deleteDoc(userDoc(uid, "minimos", id)).catch(() => {});
@@ -85,15 +107,18 @@ const Home = () => {
       setMinsAlimentos((m) => ({ ...m, [id]: val }));
     }
   };
+
   const handleUpdateAnimal = (a) => {
     setAnimales((p) => p.map((x) => (x._id === a._id ? a : x)));
     setAnimalSel(a);
   };
+
   const handleDeleteAnimal = (id) => {
     setAnimales((p) => p.filter((x) => x._id !== id));
     setNav("animales");
     setAnimalSel(null);
   };
+
   const handleSalir = async () => {
     await signOut(auth);
     setNav("dashboard");
@@ -128,6 +153,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
+      {/* Header fijo */}
       <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xl">🐄</span>
@@ -138,8 +164,11 @@ const Home = () => {
           Salir
         </button>
       </div>
+
+      {/* Contenido principal */}
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
         {nav === "dashboard" && <Dashboard animales={animales} onNav={setNav} isAdmin={isAdmin} />}
+        
         {nav === "animales" && (
           <ListaAnimales
             animales={animales}
@@ -150,6 +179,7 @@ const Home = () => {
             onNav={setNav}
           />
         )}
+        
         {nav === "nuevo" && (
           <NuevoAnimal
             onGuardar={(a) => {
@@ -160,6 +190,7 @@ const Home = () => {
             uid={uid}
           />
         )}
+        
         {nav === "detalle" && animalSel && (
           <DetalleAnimal
             animal={animalSel}
@@ -170,9 +201,23 @@ const Home = () => {
             uid={uid}
           />
         )}
+        
+        {/* Calculadora de Ración con todos los props necesarios */}
         {nav === "racion" && (
-          <CalculadoraRacion preciosUsr={preciosUsr} customAl={customAl} minsAlimentos={minsAlimentos} />
+          <CalculadoraRacion
+            preciosUsr={preciosUsr}
+            customAl={customAl}
+            minsAlimentos={minsAlimentos}
+            animales={animales}
+            grupos={grupos}
+            uid={uid}
+            onFormulacionGuardada={() => {
+              // Opcional: refrescar algo después de guardar
+              console.log("Formulación guardada");
+            }}
+          />
         )}
+        
         {nav === "alimentos" && (
           <GestionAlimentos
             preciosUsr={preciosUsr}
@@ -184,8 +229,11 @@ const Home = () => {
             onSetMinimo={handleSetMinimo}
           />
         )}
+        
         {nav === "perfil" && <PerfilUsuario user={user} onBack={() => setNav("dashboard")} />}
       </div>
+
+      {/* Barra de navegación inferior */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 flex">
         {navItems.map((item) => (
           <button
