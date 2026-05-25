@@ -1,11 +1,10 @@
 // src/components/grupos/DetalleGrupo.jsx
 import React, { useState, useEffect } from "react";
-import { updateDoc, doc } from "firebase/firestore";
+import { updateDoc } from "firebase/firestore";
 import { userDoc } from "../../utils/helpers";
 import Card from "../ui/Card";
 import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
-import Inp from "../ui/Inp";
 
 const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) => {
   const [animalesDisponibles, setAnimalesDisponibles] = useState([]);
@@ -13,20 +12,26 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
   const [cargando, setCargando] = useState(false);
   const [pesoPromedio, setPesoPromedio] = useState(0);
 
+  // Obtener peso actual de un animal (última pesada o peso inicial)
+  const getPesoActual = (animal) => {
+    return animal.pesadas?.length > 0
+      ? animal.pesadas[animal.pesadas.length - 1].peso
+      : animal.peso_inicial;
+  };
+
   useEffect(() => {
-    // Filtrar animales que no están ya en otros grupos (o que están en este grupo)
+    // Filtrar animales disponibles (no asignados a otro grupo o ya en este grupo)
     const idsEnGrupo = new Set(grupo.animales || []);
     const disponibles = animales.filter(a => idsEnGrupo.has(a._id) || !a.grupoId);
     setAnimalesDisponibles(disponibles);
-    setAnimalesSeleccionados(animales.filter(a => idsEnGrupo.has(a._id)));
+    
+    const seleccionados = animales.filter(a => idsEnGrupo.has(a._id));
+    setAnimalesSeleccionados(seleccionados);
     
     // Calcular peso promedio
-    if (animalesSeleccionados.length > 0) {
-      const suma = animalesSeleccionados.reduce((acc, a) => {
-        const peso = a.pesadas?.length > 0 ? a.pesadas[a.pesadas.length - 1].peso : a.peso_inicial;
-        return acc + peso;
-      }, 0);
-      setPesoPromedio(suma / animalesSeleccionados.length);
+    if (seleccionados.length > 0) {
+      const suma = seleccionados.reduce((acc, a) => acc + getPesoActual(a), 0);
+      setPesoPromedio(suma / seleccionados.length);
     } else {
       setPesoPromedio(0);
     }
@@ -50,10 +55,10 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
       // Actualizar el grupo en el estado padre
       onUpdate({ ...grupo, animales: nuevosIds });
       
-      alert("Asignación guardada");
+      alert("✅ Asignación guardada correctamente");
     } catch (error) {
       console.error("Error guardando asignación:", error);
-      alert("Error al guardar");
+      alert("❌ Error al guardar");
     }
     setCargando(false);
   };
@@ -70,6 +75,10 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
     onFormular(pesoPromedio, grupo);
   };
 
+  const getPesoPromedioRedondeado = () => {
+    return Math.round(pesoPromedio);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -82,15 +91,15 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
         </div>
       </div>
 
-      {/* Resumen del grupo */}
-      <Card>
+      {/* Tarjeta de resumen del grupo */}
+      <Card className="bg-gradient-to-r from-emerald-950/30 to-zinc-900">
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{animalesSeleccionados.length}</div>
+            <div className="text-3xl font-bold text-emerald-400">{animalesSeleccionados.length}</div>
             <div className="text-zinc-500 text-xs">Animales</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{pesoPromedio.toFixed(0)} kg</div>
+            <div className="text-3xl font-bold text-emerald-400">{getPesoPromedioRedondeado()} kg</div>
             <div className="text-zinc-500 text-xs">Peso promedio</div>
           </div>
         </div>
@@ -110,14 +119,12 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
           ) : (
             animalesDisponibles.map((animal) => {
               const estaSeleccionado = animalesSeleccionados.some(a => a._id === animal._id);
-              const pesoActual = animal.pesadas?.length > 0
-                ? animal.pesadas[animal.pesadas.length - 1].peso
-                : animal.peso_inicial;
+              const pesoActual = getPesoActual(animal);
               return (
                 <div
                   key={animal._id}
                   className={`flex justify-between items-center p-2 rounded-lg mb-1 cursor-pointer transition-all ${
-                    estaSeleccionado ? "bg-emerald-950/50 border border-emerald-700" : "bg-zinc-800/50"
+                    estaSeleccionado ? "bg-emerald-950/50 border border-emerald-700" : "bg-zinc-800/50 hover:bg-zinc-700/50"
                   }`}
                   onClick={() => toggleAnimal(animal._id)}
                 >
@@ -125,7 +132,7 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
                     <div className="text-white text-sm font-semibold">{animal.nombre}</div>
                     <div className="text-zinc-500 text-xs">{pesoActual} kg · {animal.raza}</div>
                   </div>
-                  <div className="text-emerald-400 text-sm font-bold">
+                  <div className="text-emerald-400 text-lg font-bold">
                     {estaSeleccionado ? "✓" : "+"}
                   </div>
                 </div>
@@ -144,28 +151,28 @@ const DetalleGrupo = ({ grupo, animales, uid, onBack, onUpdate, onFormular }) =>
       {animalesSeleccionados.length > 0 && (
         <Card>
           <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">
-            📋 Animales en el grupo
+            📋 Animales en el grupo ({animalesSeleccionados.length})
           </div>
-          {animalesSeleccionados.map((animal) => {
-            const pesoActual = animal.pesadas?.length > 0
-              ? animal.pesadas[animal.pesadas.length - 1].peso
-              : animal.peso_inicial;
-            return (
-              <div key={animal._id} className="flex justify-between items-center py-2 border-b border-zinc-700 last:border-0">
-                <div>
-                  <div className="text-white text-sm">{animal.nombre}</div>
-                  <div className="text-zinc-500 text-xs">{pesoActual} kg</div>
+          <div className="max-h-60 overflow-y-auto">
+            {animalesSeleccionados.map((animal) => {
+              const pesoActual = getPesoActual(animal);
+              return (
+                <div key={animal._id} className="flex justify-between items-center py-2 border-b border-zinc-700 last:border-0">
+                  <div>
+                    <div className="text-white text-sm">{animal.nombre}</div>
+                    <div className="text-zinc-500 text-xs">{pesoActual} kg · {animal.raza}</div>
+                  </div>
+                  <Btn
+                    variant="ghost"
+                    onClick={() => toggleAnimal(animal._id)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Quitar
+                  </Btn>
                 </div>
-                <Btn
-                  variant="ghost"
-                  onClick={() => toggleAnimal(animal._id)}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  Quitar
-                </Btn>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </Card>
       )}
     </div>
