@@ -24,7 +24,7 @@ const Dashboard = ({ animales, onNav, isAdmin }) => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-white">Panel Principal</h2>
-          <p className="text-zinc-500 text-sm">Santa Cruz · Engorde bovino</p>
+          <p className="text-zinc-500 text-sm">Santa Cruz · Bolivia · Engorde bovino</p>
         </div>
         {isAdmin && <Badge color="purple">👑 Admin</Badge>}
       </div>
@@ -61,12 +61,15 @@ const Dashboard = ({ animales, onNav, isAdmin }) => {
           <div className="text-emerald-400 font-bold text-sm mb-1">
             ✅ {listos} animal(es) listos para venta
           </div>
-          <p className="text-zinc-400 text-xs">Superaron los 430 kg. Evaluá la venta.</p>
+          <p className="text-zinc-400 text-xs">
+            Superaron los 430 kg. Evaluá la venta.
+          </p>
         </Card>
       )}
       <div className="grid grid-cols-2 gap-3">
         {[
           { l: "Mis Animales", i: "🐄", n: "animales" },
+          { l: "Mis Grupos", i: "📦", n: "grupos" },
           { l: "Formular Ración", i: "🔬", n: "racion" },
           { l: "Alimentos y Precios", i: "📦", n: "alimentos" },
           { l: "Mi Perfil", i: "👤", n: "perfil" },
