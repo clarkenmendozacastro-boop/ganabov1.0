@@ -1,6 +1,6 @@
 // src/components/grupos/ListaGrupos.jsx
 import React, { useState } from "react";
-import { addDoc, deleteDoc, updateDoc, doc, getDocs } from "firebase/firestore";
+import { addDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { userCol, userDoc } from "../../utils/helpers";
 import Card from "../ui/Card";
 import Btn from "../ui/Btn";
