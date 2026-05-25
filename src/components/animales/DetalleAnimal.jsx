@@ -1,7 +1,8 @@
 // src/components/animales/DetalleAnimal.jsx
-import React, { useState } from "react";
-import { deleteDoc, setDoc } from "firebase/firestore";
-import { userDoc } from "../../utils/helpers";
+import React, { useState, useEffect } from "react";
+import { deleteDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { db } from "../../firebase";
+import { userDoc, userCol } from "../../utils/helpers";
 import Badge from "../ui/Badge";
 import Btn from "../ui/Btn";
 import Card from "../ui/Card";
@@ -24,6 +25,10 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
   });
   const [confirmDel, setConfirmDel] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Estados para el historial de alimentación
+  const [historialRaciones, setHistorialRaciones] = useState([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
   const raza = RAZAS.find((r) => r.id === animal.raza) || RAZAS[8];
   const gdp = calcularGDP(animal.pesadas);
@@ -40,6 +45,32 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
   const proy450 = calcularProyeccion(ult, 450, gdp > 0 ? gdp : raza.gdp_base, raza);
   const proy500 = calcularProyeccion(ult, 500, gdp > 0 ? gdp : raza.gdp_base, raza);
   const bajoRendimiento = animal.pesadas?.length >= 2 && gdp < raza.gdp_base * 0.7;
+
+  // Función para cargar el historial de alimentación
+  const cargarHistorialAlimentacion = async () => {
+    setCargandoHistorial(true);
+    try {
+      const q = query(
+        collection(db, "users", uid, "raciones_historicas"),
+        where("destino_id", "==", animal._id),
+        where("destino_tipo", "==", "animal"),
+        orderBy("fecha", "desc")
+      );
+      const snapshot = await getDocs(q);
+      const historial = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHistorialRaciones(historial);
+    } catch (error) {
+      console.error("Error cargando historial:", error);
+    }
+    setCargandoHistorial(false);
+  };
+
+  // Cargar historial cuando se selecciona la pestaña de alimentación
+  useEffect(() => {
+    if (tab === "alimentacion") {
+      cargarHistorialAlimentacion();
+    }
+  }, [tab, animal._id]);
 
   const addPesada = async () => {
     if (!np.peso) return;
@@ -110,14 +141,9 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </Card>
       )}
 
-      {/* Tabs */}
+      {/* Tabs - ahora incluye "alimentacion" */}
       <div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">
-        {[
-          ["info", "Info"],
-          ["pesadas", "Pesadas"],
-          ["proyeccion", "Proyección"],
-          ["venta", "Venta"],
-        ].map(([id, label]) => (
+        {["info", "pesadas", "proyeccion", "venta", "alimentacion"].map((id) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -125,12 +151,20 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
               tab === id ? "bg-emerald-600 text-white" : "text-zinc-400"
             }`}
           >
-            {label}
+            {id === "info"
+              ? "Info"
+              : id === "pesadas"
+              ? "Pesadas"
+              : id === "proyeccion"
+              ? "Proyección"
+              : id === "venta"
+              ? "Venta"
+              : "Alimentación"}
           </button>
         ))}
       </div>
 
-      {/* Contenido de pestañas */}
+      {/* Pestaña INFO */}
       {tab === "info" && (
         <div className="grid grid-cols-2 gap-3">
           <Card className="text-center py-3">
@@ -159,6 +193,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </div>
       )}
 
+      {/* Pestaña PESADAS */}
       {tab === "pesadas" && (
         <div className="flex flex-col gap-3">
           <Card className="flex flex-col gap-3">
@@ -209,6 +244,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </div>
       )}
 
+      {/* Pestaña PROYECCIÓN */}
       {tab === "proyeccion" && (
         <div className="flex flex-col gap-3">
           {[450, 500].map((meta) => {
@@ -255,6 +291,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </div>
       )}
 
+      {/* Pestaña VENTA */}
       {tab === "venta" && (
         <div className="flex flex-col gap-3">
           {animal.pesadas?.length >= 2 ? (
@@ -306,6 +343,53 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
               Calculadora de venta
             </div>
             <VentaCalc pesoActual={ult} raza={raza} />
+          </Card>
+        </div>
+      )}
+
+      {/* Pestaña ALIMENTACIÓN (nuevo historial) */}
+      {tab === "alimentacion" && (
+        <div className="flex flex-col gap-3">
+          <Card>
+            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">
+              📋 Historial de alimentación
+            </div>
+            {cargandoHistorial ? (
+              <p className="text-zinc-500 text-sm text-center">Cargando historial...</p>
+            ) : historialRaciones.length === 0 ? (
+              <p className="text-zinc-500 text-sm text-center">
+                No hay formulaciones guardadas para este animal.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {historialRaciones.map((h, idx) => (
+                  <div key={idx} className="bg-zinc-800 rounded-xl p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="text-emerald-400 font-bold text-sm">
+                        {new Date(h.fecha).toLocaleDateString()}
+                      </div>
+                      <Badge color="gray">
+                        {h.sistema} - {h.modo}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-zinc-400 mb-2">
+                      GDP estimado: {h.gdp_estimada} kg/día | Peso: {h.peso_animal} kg
+                    </div>
+                    <div className="text-xs font-bold text-zinc-500 mb-1">Ración:</div>
+                    {h.ingredientes && h.ingredientes.map((ing, iidx) => (
+                      <div key={iidx} className="flex justify-between text-xs">
+                        <span>{ing.nombre}</span>
+                        <span className="text-emerald-400">{ing.kg_dia} kg</span>
+                      </div>
+                    ))}
+                    <div className="mt-2 pt-2 border-t border-zinc-700 flex justify-between text-xs">
+                      <span className="text-zinc-500">Costo diario:</span>
+                      <span className="text-emerald-400">Bs. {h.indicadores?.costo_dia || "N/A"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       )}
