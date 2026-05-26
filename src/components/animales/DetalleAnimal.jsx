@@ -1,6 +1,6 @@
 // src/components/animales/DetalleAnimal.jsx
 import React, { useState, useEffect } from "react";
-import { deleteDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { deleteDoc, setDoc, collection, getDocs, query, where, orderBy, updateDoc, doc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { userDoc, userCol } from "../../utils/helpers";
 import Badge from "../ui/Badge";
@@ -16,7 +16,7 @@ import {
   calcularProyeccion,
 } from "../../utils/venta";
 
-const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) => {
+const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, onNavigateToRacion, grupos = [] }) => {
   const [tab, setTab] = useState("info");
   const [np, setNp] = useState({
     fecha: new Date().toISOString().slice(0, 10),
@@ -45,6 +45,9 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
   const proy450 = calcularProyeccion(ult, 450, gdp > 0 ? gdp : raza.gdp_base, raza);
   const proy500 = calcularProyeccion(ult, 500, gdp > 0 ? gdp : raza.gdp_base, raza);
   const bajoRendimiento = animal.pesadas?.length >= 2 && gdp < raza.gdp_base * 0.7;
+
+  // Encontrar el grupo al que pertenece el animal
+  const grupoDelAnimal = animal.grupoId ? grupos.find(g => g.id === animal.grupoId) : null;
 
   // Función para cargar el historial de alimentación
   const cargarHistorialAlimentacion = async () => {
@@ -94,6 +97,34 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
     onDelete(animal._id);
   };
 
+  const sacarDelGrupo = async () => {
+    if (!confirm("¿Sacar este animal del grupo? Seguirá en 'Mis Animales'.")) return;
+    try {
+      await updateDoc(doc(db, "users", uid, "animales", animal._id), { grupoId: null });
+      onUpdate({ ...animal, grupoId: null });
+      alert("✅ Animal removido del grupo");
+    } catch (error) {
+      console.error("Error removiendo del grupo:", error);
+      alert("❌ Error al remover del grupo");
+    }
+  };
+
+  const asignarAlimentacion = () => {
+    // Guardar en localStorage para que la calculadora lo recupere
+    localStorage.setItem("formularParaAnimal", JSON.stringify({
+      id: animal._id,
+      nombre: animal.nombre,
+      raza: animal.raza,
+      peso: ult
+    }));
+    if (onNavigateToRacion) {
+      onNavigateToRacion();
+    } else {
+      alert("Redirigiendo a la calculadora...");
+      window.location.href = "#racion";
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Cabecera con botón volver y eliminar */}
@@ -106,6 +137,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
             <div className="text-xl font-black text-white">{animal.nombre}</div>
             <div className="text-zinc-500 text-xs">
               {raza.nombre} · {animal.sexo}
+              {grupoDelAnimal && <span className="text-emerald-400 ml-2">📦 {grupoDelAnimal.nombre}</span>}
             </div>
           </div>
         </div>
@@ -141,7 +173,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </Card>
       )}
 
-      {/* Tabs - ahora incluye "alimentacion" */}
+      {/* Tabs */}
       <div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">
         {["info", "pesadas", "proyeccion", "venta", "alimentacion"].map((id) => (
           <button
@@ -166,28 +198,47 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
 
       {/* Pestaña INFO */}
       {tab === "info" && (
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="text-center py-3">
-            <div className="text-xl font-black text-zinc-300">{animal.peso_inicial} kg</div>
-            <div className="text-zinc-500 text-xs">Peso inicial</div>
-          </Card>
-          <Card className="text-center py-3">
-            <div className="text-xl font-black text-emerald-400">{ult} kg</div>
-            <div className="text-zinc-500 text-xs">Peso actual</div>
-          </Card>
-          <Card className="text-center py-3">
-            <div className="text-xl font-black text-sky-400">{(ult - animal.peso_inicial).toFixed(0)} kg</div>
-            <div className="text-zinc-500 text-xs">Ganancia total</div>
-          </Card>
-          <Card className="text-center py-3">
-            <div className="text-xl font-black text-amber-400">
-              {gdp > 0 ? `${gdp.toFixed(3)} kg/d` : "Sin datos"}
-            </div>
-            <div className="text-zinc-500 text-xs">GDP promedio</div>
-          </Card>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="text-center py-3">
+              <div className="text-xl font-black text-zinc-300">{animal.peso_inicial} kg</div>
+              <div className="text-zinc-500 text-xs">Peso inicial</div>
+            </Card>
+            <Card className="text-center py-3">
+              <div className="text-xl font-black text-emerald-400">{ult} kg</div>
+              <div className="text-zinc-500 text-xs">Peso actual</div>
+            </Card>
+            <Card className="text-center py-3">
+              <div className="text-xl font-black text-sky-400">{(ult - animal.peso_inicial).toFixed(0)} kg</div>
+              <div className="text-zinc-500 text-xs">Ganancia total</div>
+            </Card>
+            <Card className="text-center py-3">
+              <div className="text-xl font-black text-amber-400">
+                {gdp > 0 ? `${gdp.toFixed(3)} kg/d` : "Sin datos"}
+              </div>
+              <div className="text-zinc-500 text-xs">GDP promedio</div>
+            </Card>
+          </div>
+          
           {animal.notas && (
             <Card className="col-span-2">
               <p className="text-zinc-400 text-sm">📝 {animal.notas}</p>
+            </Card>
+          )}
+          
+          {/* Botón para asignar alimentación */}
+          <Card>
+            <Btn onClick={asignarAlimentacion} className="w-full py-2">
+              🍽️ Asignar alimentación para este animal
+            </Btn>
+          </Card>
+          
+          {/* Botón para sacar del grupo */}
+          {animal.grupoId && (
+            <Card>
+              <Btn onClick={sacarDelGrupo} variant="secondary" className="w-full py-2">
+                📦 Sacar del grupo
+              </Btn>
             </Card>
           )}
         </div>
@@ -347,7 +398,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid }) 
         </div>
       )}
 
-      {/* Pestaña ALIMENTACIÓN (nuevo historial) */}
+      {/* Pestaña ALIMENTACIÓN */}
       {tab === "alimentacion" && (
         <div className="flex flex-col gap-3">
           <Card>
