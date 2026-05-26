@@ -8,7 +8,7 @@ import Inp from "../ui/Inp";
 import Sel from "../ui/Sel";
 import { RAZAS } from "../../data/razas";
 
-const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
+const NuevoAnimal = ({ onGuardar, onBack, uid, grupos = [] }) => {
   const [f, sF] = useState({
     nombre: "",
     raza: "otro",
@@ -16,9 +16,11 @@ const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
     peso_inicial: "",
     fecha_entrada: new Date().toISOString().slice(0, 10),
     notas: "",
+    grupoId: "",
   });
   const [loading, sL] = useState(false);
   const set = (k, v) => sF((x) => ({ ...x, [k]: v }));
+  
   const guardar = async () => {
     if (!f.nombre || !f.peso_inicial) return alert("Completá nombre y peso");
     sL(true);
@@ -32,6 +34,7 @@ const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
           nota: "Peso de entrada",
         },
       ],
+      grupoId: f.grupoId || null,
     };
     const ref = await addDoc(userCol(uid, "animales"), {
       ...animal,
@@ -40,6 +43,7 @@ const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
     onGuardar({ ...animal, _id: ref.id });
     sL(false);
   };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
@@ -57,9 +61,7 @@ const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
         />
         <Sel label="Raza" value={f.raza} onChange={(e) => set("raza", e.target.value)}>
           {RAZAS.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.nombre}
-            </option>
+            <option key={r.id} value={r.id}>{r.nombre}</option>
           ))}
         </Sel>
         <Sel label="Sexo" value={f.sexo} onChange={(e) => set("sexo", e.target.value)}>
@@ -79,6 +81,17 @@ const NuevoAnimal = ({ onGuardar, onBack, uid }) => {
           value={f.fecha_entrada}
           onChange={(e) => set("fecha_entrada", e.target.value)}
         />
+        
+        {/* Selector de grupo */}
+        {grupos.length > 0 && (
+          <Sel label="Grupo (opcional)" value={f.grupoId} onChange={(e) => set("grupoId", e.target.value)}>
+            <option value="">Sin grupo</option>
+            {grupos.map((g) => (
+              <option key={g.id} value={g.id}>{g.nombre}</option>
+            ))}
+          </Sel>
+        )}
+        
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
             Notas (opcional)
