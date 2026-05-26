@@ -209,7 +209,7 @@ export function formularRacionAvanzada({
     agregar(minerales[0], pvN * 0.0004);
   }
 
-  // 3. Concentrados (energéticos, proteicos y subproductos fibrosos)
+  // 3. Concentrados
   let msRestante = cmsBase - ms_acum;
   let msConcentradoMax = Math.min(msRestante, cmsBase * (maxConcentrado / 100));
 
@@ -270,7 +270,7 @@ export function formularRacionAvanzada({
   const peNDF_pct = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
   const pctConcentrado = ((ms_acum - racion.filter(r => r.categoria === "forraje").reduce((s,r) => s + r.ms_kg, 0)) / ms_acum) * 100;
 
-  // Score acidosis (con ajuste para pastoril)
+  // Score acidosis
   let scoreAcidosis = 0;
   if (peNDF_pct < 18) scoreAcidosis += 40;
   else if (peNDF_pct < 24) scoreAcidosis += 25;
