@@ -129,13 +129,27 @@ const Home = () => {
     }
   };
 
-  const handleFormularParaGrupo = (pesoPromedio, grupo) => {
-    // Guardar en localStorage para que la calculadora lo recupere
-    localStorage.setItem("grupoFormula", JSON.stringify({ 
-      peso: pesoPromedio, 
-      grupoId: grupo.id, 
-      grupoNombre: grupo.nombre 
-    }));
+  const handleFormularParaGrupo = (pesoPromedio, grupo, animalIndividual = null) => {
+    if (animalIndividual) {
+      // Formular para un animal individual dentro del grupo
+      localStorage.setItem("formularParaAnimal", JSON.stringify({
+        id: animalIndividual._id || animalIndividual.id,
+        nombre: animalIndividual.nombre,
+        raza: animalIndividual.raza,
+        peso: pesoPromedio
+      }));
+    } else {
+      // Formular para todo el grupo
+      localStorage.setItem("grupoFormula", JSON.stringify({
+        peso: pesoPromedio,
+        grupoId: grupo.id,
+        grupoNombre: grupo.nombre
+      }));
+    }
+    setNav("racion");
+  };
+
+  const handleNavigateToRacion = () => {
     setNav("racion");
   };
 
@@ -188,11 +202,14 @@ const Home = () => {
 
       {/* Contenido principal */}
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
+        {/* Dashboard */}
         {nav === "dashboard" && <Dashboard animales={animales} onNav={setNav} isAdmin={isAdmin} />}
         
+        {/* Mis Animales */}
         {nav === "animales" && (
           <ListaAnimales
             animales={animales}
+            grupos={grupos}
             onSelect={(a) => {
               setAnimalSel(a);
               setNav("detalle");
@@ -201,6 +218,7 @@ const Home = () => {
           />
         )}
         
+        {/* Nuevo Animal */}
         {nav === "nuevo" && (
           <NuevoAnimal
             onGuardar={(a) => {
@@ -209,9 +227,11 @@ const Home = () => {
             }}
             onBack={() => setNav("animales")}
             uid={uid}
+            grupos={grupos}
           />
         )}
         
+        {/* Detalle de Animal */}
         {nav === "detalle" && animalSel && (
           <DetalleAnimal
             animal={animalSel}
@@ -220,10 +240,12 @@ const Home = () => {
             onBack={() => setNav("animales")}
             preciosUsr={preciosUsr}
             uid={uid}
+            grupos={grupos}
+            onNavigateToRacion={handleNavigateToRacion}
           />
         )}
         
-        {/* Sección de grupos */}
+        {/* Grupos - Lista */}
         {nav === "grupos" && !showGrupoDetalle && (
           <ListaGrupos
             grupos={grupos}
@@ -239,6 +261,7 @@ const Home = () => {
           />
         )}
         
+        {/* Grupos - Detalle */}
         {nav === "grupos" && showGrupoDetalle && grupoSel && (
           <DetalleGrupo
             grupo={grupoSel}
@@ -268,6 +291,7 @@ const Home = () => {
           />
         )}
         
+        {/* Alimentos */}
         {nav === "alimentos" && (
           <GestionAlimentos
             preciosUsr={preciosUsr}
@@ -280,6 +304,7 @@ const Home = () => {
           />
         )}
         
+        {/* Perfil */}
         {nav === "perfil" && <PerfilUsuario user={user} onBack={() => setNav("dashboard")} />}
       </div>
 
