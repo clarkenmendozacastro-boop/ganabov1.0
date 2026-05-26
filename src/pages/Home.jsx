@@ -41,7 +41,7 @@ const Home = () => {
     return () => unsub();
   }, []);
 
-  // Cargar datos del usuario
+  // Cargar datos
   useEffect(() => {
     if (!uid) {
       setAnimales([]);
@@ -54,38 +54,24 @@ const Home = () => {
     const cargar = async () => {
       setDataLoading(true);
       try {
-        // Cargar animales
         const animSnap = await getDocs(userCol(uid, "animales"));
         setAnimales(animSnap.docs.map((d) => ({ _id: d.id, ...d.data() })));
         
-        // Cargar precios
         const precSnap = await getDocs(userCol(uid, "precios"));
         const precios = {};
-        precSnap.docs.forEach((d) => {
-          precios[d.id] = d.data().valor;
-        });
+        precSnap.docs.forEach((d) => { precios[d.id] = d.data().valor; });
         setPreciosUsr(precios);
         
-        // Cargar alimentos personalizados
         const alSnap = await getDocs(userCol(uid, "alimentos_custom"));
         setCustomAl(alSnap.docs.map((d) => ({ _id: d.id, id: d.id, ...d.data() })));
         
-        // Cargar mínimos de alimentos
         const minsSnap = await getDocs(userCol(uid, "minimos"));
         const mins = {};
-        minsSnap.docs.forEach((d) => {
-          mins[d.id] = d.data().valor;
-        });
+        minsSnap.docs.forEach((d) => { mins[d.id] = d.data().valor; });
         setMinsAlimentos(mins);
         
-        // Cargar grupos
-        try {
-          const gruposSnap = await getDocs(userCol(uid, "grupos"));
-          setGrupos(gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        } catch (e) {
-          console.log("No hay grupos creados aún");
-          setGrupos([]);
-        }
+        const gruposSnap = await getDocs(userCol(uid, "grupos"));
+        setGrupos(gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (e) {
         console.error(e);
       }
@@ -124,32 +110,28 @@ const Home = () => {
 
   const handleUpdateGrupo = (grupoActualizado) => {
     setGrupos(grupos.map(g => g.id === grupoActualizado.id ? grupoActualizado : g));
-    if (grupoSel?.id === grupoActualizado.id) {
-      setGrupoSel(grupoActualizado);
-    }
+    if (grupoSel?.id === grupoActualizado.id) setGrupoSel(grupoActualizado);
   };
 
-  const handleFormularParaGrupo = (pesoPromedio, grupo, animalIndividual = null) => {
-    if (animalIndividual) {
-      // Formular para un animal individual dentro del grupo
-      localStorage.setItem("formularParaAnimal", JSON.stringify({
-        id: animalIndividual._id || animalIndividual.id,
-        nombre: animalIndividual.nombre,
-        raza: animalIndividual.raza,
-        peso: pesoPromedio
-      }));
-    } else {
-      // Formular para todo el grupo
-      localStorage.setItem("grupoFormula", JSON.stringify({
-        peso: pesoPromedio,
-        grupoId: grupo.id,
-        grupoNombre: grupo.nombre
-      }));
-    }
+  const handleFormularParaGrupo = (pesoPromedio, grupo) => {
+    localStorage.setItem("grupoFormula", JSON.stringify({
+      peso: pesoPromedio,
+      grupoId: grupo.id,
+      grupoNombre: grupo.nombre
+    }));
     setNav("racion");
   };
 
-  const handleNavigateToRacion = () => {
+  const handleFormularParaAnimal = (animal) => {
+    const pesoActual = animal.pesadas?.length > 0 
+      ? animal.pesadas[animal.pesadas.length - 1].peso 
+      : animal.peso_inicial;
+    localStorage.setItem("formularParaAnimal", JSON.stringify({
+      id: animal._id,
+      nombre: animal.nombre,
+      raza: animal.raza,
+      peso: pesoActual
+    }));
     setNav("racion");
   };
 
@@ -166,72 +148,47 @@ const Home = () => {
     { id: "alimentos", i: "📦", l: "Alimentos" },
   ];
 
-  if (authLoading)
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-pulse">🐄</div>
-          <p className="text-zinc-500 text-sm">Cargando...</p>
-        </div>
-      </div>
-    );
+  if (authLoading) return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando...</p></div>
+    </div>
+  );
   if (!user) return null;
-  if (dataLoading)
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-pulse">🐄</div>
-          <p className="text-zinc-500 text-sm">Cargando tus datos...</p>
-        </div>
-      </div>
-    );
+  if (dataLoading) return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="text-center"><div className="text-6xl mb-4 animate-pulse">🐄</div><p className="text-zinc-500 text-sm">Cargando tus datos...</p></div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Header fijo */}
       <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🐄</span>
-          <span className="font-black text-white tracking-tight">GanaBov Pro</span>
-          {isAdmin && <Badge color="purple">👑</Badge>}
-        </div>
-        <button onClick={handleSalir} className="text-zinc-500 text-xs hover:text-zinc-300 transition-colors">
-          Salir
-        </button>
+        <div className="flex items-center gap-2"><span className="text-xl">🐄</span><span className="font-black text-white tracking-tight">GanaBov Pro</span>{isAdmin && <Badge color="purple">👑</Badge>}</div>
+        <button onClick={handleSalir} className="text-zinc-500 text-xs hover:text-zinc-300">Salir</button>
       </div>
 
-      {/* Contenido principal */}
       <div className="max-w-lg mx-auto px-4 py-5 pb-28">
-        {/* Dashboard */}
         {nav === "dashboard" && <Dashboard animales={animales} onNav={setNav} isAdmin={isAdmin} />}
         
-        {/* Mis Animales */}
         {nav === "animales" && (
           <ListaAnimales
             animales={animales}
             grupos={grupos}
-            onSelect={(a) => {
-              setAnimalSel(a);
-              setNav("detalle");
-            }}
+            onSelect={(a) => { setAnimalSel(a); setNav("detalle"); }}
             onNav={setNav}
+            onFormular={handleFormularParaAnimal}
           />
         )}
         
-        {/* Nuevo Animal */}
         {nav === "nuevo" && (
           <NuevoAnimal
-            onGuardar={(a) => {
-              setAnimales((p) => [...p, a]);
-              setNav("animales");
-            }}
+            onGuardar={(a) => { setAnimales((p) => [...p, a]); setNav("animales"); }}
             onBack={() => setNav("animales")}
             uid={uid}
             grupos={grupos}
           />
         )}
         
-        {/* Detalle de Animal */}
         {nav === "detalle" && animalSel && (
           <DetalleAnimal
             animal={animalSel}
@@ -241,42 +198,32 @@ const Home = () => {
             preciosUsr={preciosUsr}
             uid={uid}
             grupos={grupos}
-            onNavigateToRacion={handleNavigateToRacion}
+            onFormular={handleFormularParaAnimal}
           />
         )}
         
-        {/* Grupos - Lista */}
         {nav === "grupos" && !showGrupoDetalle && (
           <ListaGrupos
             grupos={grupos}
             setGrupos={setGrupos}
             animales={animales}
             uid={uid}
-            onNav={setNav}
-            onSelectGrupo={(grupo) => {
-              setGrupoSel(grupo);
-              setShowGrupoDetalle(true);
-              setNav("grupos");
-            }}
+            onSelectGrupo={(grupo) => { setGrupoSel(grupo); setShowGrupoDetalle(true); setNav("grupos"); }}
           />
         )}
         
-        {/* Grupos - Detalle */}
         {nav === "grupos" && showGrupoDetalle && grupoSel && (
           <DetalleGrupo
             grupo={grupoSel}
             animales={animales}
             uid={uid}
-            onBack={() => {
-              setShowGrupoDetalle(false);
-              setGrupoSel(null);
-            }}
+            onBack={() => { setShowGrupoDetalle(false); setGrupoSel(null); }}
             onUpdate={handleUpdateGrupo}
             onFormular={handleFormularParaGrupo}
+            onFormularAnimal={handleFormularParaAnimal}
           />
         )}
         
-        {/* Calculadora de Ración */}
         {nav === "racion" && (
           <CalculadoraRacion
             preciosUsr={preciosUsr}
@@ -285,13 +232,9 @@ const Home = () => {
             animales={animales}
             grupos={grupos}
             uid={uid}
-            onFormulacionGuardada={() => {
-              console.log("Formulación guardada");
-            }}
           />
         )}
         
-        {/* Alimentos */}
         {nav === "alimentos" && (
           <GestionAlimentos
             preciosUsr={preciosUsr}
@@ -304,24 +247,13 @@ const Home = () => {
           />
         )}
         
-        {/* Perfil */}
         {nav === "perfil" && <PerfilUsuario user={user} onBack={() => setNav("dashboard")} />}
       </div>
 
-      {/* Barra de navegación inferior */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur border-t border-zinc-800 flex">
         {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setNav(item.id)}
-            className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${
-              nav === item.id || (nav === "detalle" && item.id === "animales") || (nav === "grupos" && item.id === "grupos")
-                ? "text-emerald-400"
-                : "text-zinc-600 hover:text-zinc-400"
-            }`}
-          >
-            <span className="text-xl">{item.i}</span>
-            <span className="text-xs font-semibold">{item.l}</span>
+          <button key={item.id} onClick={() => setNav(item.id)} className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all ${nav === item.id || (nav === "detalle" && item.id === "animales") || (nav === "grupos" && item.id === "grupos") ? "text-emerald-400" : "text-zinc-600 hover:text-zinc-400"}`}>
+            <span className="text-xl">{item.i}</span><span className="text-xs font-semibold">{item.l}</span>
           </button>
         ))}
       </div>
