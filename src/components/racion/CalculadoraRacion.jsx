@@ -188,9 +188,12 @@ const CalculadoraRacion = ({
       if (!grupo) { alert("Grupo no encontrado"); return; }
       destinoId = grupo.id; destinoNombre = grupo.nombre; destinoTipo = "grupo";
     }
+
     setGuardando(true);
     setMensajeGuardado(null);
     try {
+      if (!uid) throw new Error("Usuario no autenticado");
+      const racionesRef = collection(db, "users", uid, "raciones_historicas");
       const formulacionData = {
         fecha: new Date().toISOString(),
         fecha_local: new Date().toLocaleDateString(),
@@ -209,7 +212,8 @@ const CalculadoraRacion = ({
         costo_total_periodo: (resultado.indicadores.costo_dia * diasGuardar).toFixed(2),
         createdAt: new Date()
       };
-      await addDoc(collection(db, "users", uid, "raciones_historicas"), formulacionData);
+      console.log("Guardando:", formulacionData);
+      await addDoc(racionesRef, formulacionData);
       setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${diasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
       setTimeout(() => setMensajeGuardado(null), 3000);
@@ -493,7 +497,6 @@ const CalculadoraRacion = ({
             <div key={i} className="text-sky-300 text-xs italic mt-2">🧠 {e}</div>
           ))}
 
-          {/* Mensaje informativo para sistema pastoril automático */}
           {esPastorilAuto && (
             <div className="mt-3 p-3 bg-blue-950/30 border border-blue-700/50 rounded-lg">
               <div className="text-blue-400 text-sm font-bold mb-1">🌿 Instrucciones para sistema pastoril</div>
