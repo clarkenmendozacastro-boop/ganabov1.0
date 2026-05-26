@@ -1,4 +1,8 @@
-// src/utils/nutricion.js - VERSIÓN CORREGIDA (Feedlot y ENm)
+// src/utils/nutricion.js
+// ============================================================
+// GANABOV ENGINE PRO - MOTOR NUTRICIONAL AVANZADO
+// Incluye: ENm, ENg, peNDF, PDR/PNR, acidosis, sincronía, scores
+// ============================================================
 
 export const FASES_FEEDLOT = {
   inicio: { nombre: "Inicio", dias: 14, conc_max: 50, peNDF_min: 22, forraje_min: 50, gdp_esperado: 1.2 },
@@ -7,9 +11,9 @@ export const FASES_FEEDLOT = {
 };
 
 const CONFIG_SISTEMAS = {
-  pastoril: { nombre: "Pastoril", gdp_min: 0.4, gdp_max: 0.7, cms_pct: 2.2, forraje_min: 70, concentrado_max: 30, enm_factor: 1.0 },
-  semiIntensivo: { nombre: "Semi-intensivo", gdp_min: 0.8, gdp_max: 1.1, cms_pct: 2.5, forraje_min: 55, concentrado_max: 45, enm_factor: 1.0 },
-  feedlot: { nombre: "Feedlot", gdp_min: 1.2, gdp_max: 2.0, cms_pct: 2.8, forraje_min: 30, concentrado_max: 70, enm_factor: 0.85 }
+  pastoril: { nombre: "Pastoril", gdp_min: 0.4, gdp_max: 0.7, cms_pct: 1.0, forraje_min: 0, concentrado_max: 100, enm_factor: 1.0, es_extensivo: true },
+  semiIntensivo: { nombre: "Semi-intensivo", gdp_min: 0.8, gdp_max: 1.2, cms_pct: 2.5, forraje_min: 55, concentrado_max: 45, enm_factor: 1.0, es_extensivo: false },
+  feedlot: { nombre: "Feedlot", gdp_min: 1.2, gdp_max: 2.0, cms_pct: 2.8, forraje_min: 30, concentrado_max: 70, enm_factor: 0.85, es_extensivo: false }
 };
 
 const FACTORES_CALIDAD = {
@@ -39,7 +43,7 @@ const RAZA_PARAMS = {
 const INGREDIENTES_RESTRINGIDOS = {
   pastoril: ['grasa_bypass', 'harina_sangre', 'harina_pescado', 'monensina'],
   semiIntensivo: ['grasa_bypass', 'harina_sangre', 'harina_pescado'],
-  feedlot: ['harina_sangre']  // Restringir harina de sangre en feedlot
+  feedlot: ['harina_sangre']
 };
 
 const GRANOS_TRADICIONALES = ['maiz_amarillo', 'maiz_blanco', 'sorgo_grano', 'sorgo_rojo', 'cebada_grano', 'trigo_grano', 'avena_grano'];
@@ -77,14 +81,19 @@ export function formularRacionAvanzada({
   // Calcular requerimientos ENm y PB (NRC)
   const pvMet = Math.pow(pvN, 0.75);
   const ENm_mant = 0.077 * pvMet * 1.1;
-  // ENg por kg de ganancia (ecuación NRC)
   const ENg_por_kg = 0.0635 * Math.pow(pvN, 0.6) + 4.1 * gdpObjetivo;
   const ENm_crec = gdpObjetivo * ENg_por_kg;
   let ENm_total = (ENm_mant + ENm_crec) * sistema.enm_factor;
   const PB_total = (3.8 * pvMet + gdpObjetivo * 268 - 29.4 * ENg_por_kg) / 0.65;
 
-  // Consumo de MS
-  let cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo;
+  // Consumo de MS (para pastoril se fuerza a suplemento)
+  let cmsBase;
+  if (sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos) {
+    // En extensivo automático, solo se formula suplemento (1% del PV)
+    cmsBase = pvN * 0.01;
+  } else {
+    cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo;
+  }
   if (sistemaId === "feedlot" && fase) {
     if (fase === "inicio") cmsBase *= 0.92;
     else if (fase === "terminacion") cmsBase *= 1.05;
@@ -129,7 +138,12 @@ export function formularRacionAvanzada({
   let proteicos = alimentos.filter(a => a.categoria === "proteico");
   let minerales = alimentos.filter(a => a.categoria === "mineral");
 
-  // Verificar disponibilidad
+  // En sistema pastoril automático (no personalizado, no mis_alimentos), eliminamos los forrajes de la formulación
+  if (sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos) {
+    forrajes = [];
+  }
+
+  // Verificar disponibilidad (para modo mis_alimentos)
   let deficiencias = [];
   if (esMisAlimentos) {
     if (forrajes.length === 0) deficiencias.push({ tipo: "forraje", msg: "⚠️ No has seleccionado ningún FORRAJE. El animal no podrá alimentarse correctamente." });
@@ -138,8 +152,11 @@ export function formularRacionAvanzada({
     if (minerales.length === 0) deficiencias.push({ tipo: "mineral", msg: "⚠️ FALTA SAL MINERAL. Riesgo de deficiencias minerales." });
   }
 
-  if (forrajes.length === 0) {
-    return { error: false, dietaInsuficiente: true, msg: "No hay forrajes", racion: [], gdp_estimada: 0, alertasCalidad, deficiencias };
+  if (forrajes.length === 0 && !(sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos)) {
+    // Si no hay forrajes y no es pastoril automático, se puede permitir que la dieta sea solo concentrado (pero con advertencia)
+    if (!(sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos)) {
+      return { error: false, dietaInsuficiente: true, msg: "No hay forrajes disponibles", racion: [], gdp_estimada: 0.2, alertasCalidad, deficiencias };
+    }
   }
 
   // Ordenar según modo
@@ -184,26 +201,28 @@ export function formularRacionAvanzada({
     peNDF_acum += msKg * (al.peNDF / 100);
   };
 
-  // 1. Forraje base
-  let forrajePrincipal = forrajes[0];
-  let forrajeSecundario = forrajes.length > 1 ? forrajes[1] : null;
-  const pctForraje = Math.max(sistema.forraje_min / 100, 0.50);
-  let msForraje = cmsBase * pctForraje;
-  
-  let kgForraje1 = (msForraje * 0.7) / (forrajePrincipal.ms / 100);
-  agregar(forrajePrincipal, kgForraje1);
-  
-  if (forrajeSecundario) {
-    let kgForraje2 = (msForraje * 0.3) / (forrajeSecundario.ms / 100);
-    agregar(forrajeSecundario, kgForraje2);
+  // 1. Forraje base (solo si hay forrajes y no es pastoril automático)
+  if (forrajes.length > 0 && !(sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos)) {
+    let forrajePrincipal = forrajes[0];
+    let forrajeSecundario = forrajes.length > 1 ? forrajes[1] : null;
+    const pctForraje = Math.max(sistema.forraje_min / 100, 0.50);
+    let msForraje = cmsBase * pctForraje;
+    
+    let kgForraje1 = (msForraje * 0.7) / (forrajePrincipal.ms / 100);
+    agregar(forrajePrincipal, kgForraje1);
+    
+    if (forrajeSecundario) {
+      let kgForraje2 = (msForraje * 0.3) / (forrajeSecundario.ms / 100);
+      agregar(forrajeSecundario, kgForraje2);
+    }
   }
 
-  // 2. Mineral
+  // 2. Mineral (dosis fija 0.04% del PV)
   if (minerales.length) {
     agregar(minerales[0], pvN * 0.0004);
   }
 
-  // 3. Concentrados
+  // 3. Concentrados (energéticos y proteicos)
   let msRestante = cmsBase - ms_acum;
   let msConcentradoMax = Math.min(msRestante, cmsBase * (maxConcentrado / 100));
   
@@ -242,8 +261,8 @@ export function formularRacionAvanzada({
     }
   }
 
-  // Completar mínimo 4 ingredientes
-  if (racion.length < 4) {
+  // Completar mínimo 4 ingredientes (si no es pastoril automático)
+  if (racion.length < 4 && !(sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos)) {
     const extras = [...forrajes.slice(2), ...energeticos.slice(1), ...proteicos.slice(1)];
     for (let i = 0; i < extras.length && racion.length < 4; i++) {
       agregar(extras[i], 0.3);
@@ -269,10 +288,9 @@ export function formularRacionAvanzada({
   else if (scoreAcidosis >= 50) riesgoAcidosis = "alto";
   else if (scoreAcidosis >= 25) riesgoAcidosis = "precaución";
 
-  // GDP estimada (corregida para feedlot)
+  // GDP estimada
   let gdpEstimada = gdpObjetivo;
   
-  // Penalización por energía baja (menos agresiva en feedlot)
   const cumplimientoENm = Math.min(1.2, enm_acum / ENm_total);
   if (cumplimientoENm < 0.85) {
     gdpEstimada *= (0.85 + (cumplimientoENm - 0.7) * 0.5);
@@ -280,16 +298,13 @@ export function formularRacionAvanzada({
     gdpEstimada *= Math.min(1.1, cumplimientoENm);
   }
   
-  // Penalización por acidosis
   if (scoreAcidosis > 60) gdpEstimada *= 0.9;
   else if (scoreAcidosis > 40) gdpEstimada *= 0.95;
   
-  // Ajustes por modo mis_alimentos
   if (esMisAlimentos && (forrajes.length === 0 || energeticos.length === 0)) {
     gdpEstimada *= 0.6;
   }
   
-  // Limitar al rango del sistema
   gdpEstimada = Math.min(gdpEstimada, sistema.gdp_max * razaParam.gdp);
   gdpEstimada = Math.max(gdpEstimada, sistema.gdp_min * razaParam.gdp * 0.8);
   gdpEstimada = Math.round(gdpEstimada * 100) / 100;
@@ -297,10 +312,13 @@ export function formularRacionAvanzada({
   const costoDiario = racion.reduce((s,r) => s + r.precio_total, 0);
   const conversion = gdpEstimada > 0 ? (ms_acum / gdpEstimada).toFixed(1) : "N/A";
 
-  // Explicaciones
+  // Explicaciones IA (incluir mensaje para pastoril)
   let explicaciones = [];
   if (peNDF_pct > 30) explicaciones.push("Se priorizaron pastos largos para garantizar fibra efectiva y prevenir acidosis.");
   if (esMisAlimentos && deficiencias.length > 0) explicaciones.push("Se formuló la mejor dieta posible con los alimentos que seleccionaste.");
+  if (sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos && forrajes.length === 0) {
+    explicaciones.push("🌾 Sistema pastoril: se formuló solo un suplemento porque el animal ya consume forraje en el potrero.");
+  }
 
   return {
     error: false,
