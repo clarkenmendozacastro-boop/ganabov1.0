@@ -60,8 +60,25 @@ const CalculadoraRacion = ({
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
 
-  // Efecto para cargar peso desde grupo (Fase 3)
+  // Efecto para cargar datos desde localStorage (animal individual o grupo)
   useEffect(() => {
+    // Primero verificar si viene de un animal individual (desde "Asignar alimentación")
+    const animalData = localStorage.getItem("formularParaAnimal");
+    if (animalData) {
+      try {
+        const { nombre, raza: razaAnimal, peso: pesoAnimal, id } = JSON.parse(animalData);
+        setPeso(pesoAnimal.toString());
+        setRaza(razaAnimal);
+        localStorage.removeItem("formularParaAnimal");
+        const razaNombre = RAZAS.find(r => r.id === razaAnimal)?.nombre || razaAnimal;
+        alert(`🐄 Formulando para el animal "${nombre}" (${pesoAnimal} kg, ${razaNombre})`);
+      } catch (e) {
+        console.error("Error al leer datos del animal:", e);
+      }
+      return;
+    }
+    
+    // Si no, verificar si viene de un grupo (desde "Formular para grupo")
     const grupoData = localStorage.getItem("grupoFormula");
     if (grupoData) {
       try {
@@ -167,6 +184,15 @@ const CalculadoraRacion = ({
       return;
     }
     
+    // Preguntar por cuántos días
+    const dias = prompt("¿Para cuántos días quieres esta formulación?", "1");
+    if (dias === null) return;
+    const numDiasGuardar = parseInt(dias);
+    if (isNaN(numDiasGuardar) || numDiasGuardar < 1) {
+      alert("Número de días no válido");
+      return;
+    }
+    
     let destinoId = null;
     let destinoNombre = null;
     let destinoTipo = null;
@@ -197,8 +223,20 @@ const CalculadoraRacion = ({
     setMensajeGuardado(null);
     
     try {
+      // Calcular cantidades para el período
+      const ingredientesConPeriodo = resultado.racion.map(r => ({
+        id: r.id,
+        nombre: r.nombre,
+        categoria: r.categoria,
+        kg_dia: r.kg_dia,
+        ms_kg: r.ms_kg,
+        kg_total_periodo: (r.kg_dia * numDiasGuardar).toFixed(2),
+        costo_periodo: ((r.kg_dia * numDiasGuardar) * (r.precio_total / r.kg_dia)).toFixed(2)
+      }));
+      
       const formulacionData = {
         fecha: new Date().toISOString(),
+        fecha_local: new Date().toLocaleDateString(),
         peso_animal: parseFloat(peso),
         raza: raza,
         sistema: sistema,
@@ -206,33 +244,27 @@ const CalculadoraRacion = ({
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
-        ingredientes: resultado.racion.map(r => ({
-          id: r.id,
-          nombre: r.nombre,
-          categoria: r.categoria,
-          kg_dia: r.kg_dia,
-          ms_kg: r.ms_kg,
-          calidad: r.calidad
-        })),
+        ingredientes: ingredientesConPeriodo,
         alertas: resultado.alertasCalidad || [],
         deficiencias: resultado.deficiencias || [],
         destino_id: destinoId,
         destino_nombre: destinoNombre,
         destino_tipo: destinoTipo,
         num_animales: mostrarMultiplicador ? numAnimales : 1,
-        num_dias: mostrarMultiplicador ? numDias : 1,
+        num_dias: numDiasGuardar,
+        costo_total_periodo: (resultado.indicadores.costo_dia * numDiasGuardar).toFixed(2),
         createdAt: new Date()
       };
       
       await addDoc(collection(db, "users", uid, "raciones_historicas"), formulacionData);
       
-      setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre}`);
+      setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${numDiasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
       
       setTimeout(() => setMensajeGuardado(null), 3000);
     } catch (error) {
       console.error("Error guardando formulación:", error);
-      setMensajeGuardado("❌ Error al guardar");
+      setMensajeGuardado("❌ Error al guardar. Revisa la consola.");
     } finally {
       setGuardando(false);
     }
