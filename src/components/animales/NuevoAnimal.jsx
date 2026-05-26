@@ -82,7 +82,7 @@ const NuevoAnimal = ({ onGuardar, onBack, uid, grupos = [] }) => {
           onChange={(e) => set("fecha_entrada", e.target.value)}
         />
         
-        {/* Selector de grupo */}
+        {/* Selector de grupo - aparece solo si hay grupos creados */}
         {grupos.length > 0 && (
           <Sel label="Grupo (opcional)" value={f.grupoId} onChange={(e) => set("grupoId", e.target.value)}>
             <option value="">Sin grupo</option>
