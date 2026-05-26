@@ -14,6 +14,14 @@ const ListaAnimales = ({ animales, grupos = [], onSelect, onNav, onFormular }) =
     const col = animal.pesadas?.length < 2 ? "gray" : gdp >= raza.gdp_base * 0.85 ? "green" : gdp >= raza.gdp_base * 0.6 ? "yellow" : "red";
     const grupo = animal.grupoId ? grupos.find(g => g.id === animal.grupoId) : null;
     
+    const handleFormular = (e) => {
+      e.stopPropagation(); // evitar que también se abra el detalle
+      const confirmar = window.confirm(`¿Formular ración para ${animal.nombre} (${ult} kg)?`);
+      if (confirmar) {
+        onFormular(animal);
+      }
+    };
+    
     return (
       <div className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 hover:border-emerald-600/50 hover:bg-zinc-800/40 transition-all">
         <div className="flex justify-between items-start mb-3">
@@ -28,7 +36,7 @@ const ListaAnimales = ({ animales, grupos = [], onSelect, onNav, onFormular }) =
           <div><div className="font-black text-lg text-emerald-400">{ult} kg</div><div className="text-zinc-600 text-xs">actual</div></div>
           <div><div className="font-black text-lg text-sky-400">{animal.peso_inicial} kg</div><div className="text-zinc-600 text-xs">entrada</div></div>
           <div><div className="font-black text-lg text-amber-400">{gdp > 0 ? `${gdp.toFixed(2)}/d` : "—"}</div><div className="text-zinc-600 text-xs">GDP</div></div>
-          <div><button onClick={() => onFormular(animal)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-2 py-1 rounded-full">🍽️</button></div>
+          <div><button onClick={handleFormular} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-2 py-1 rounded-full">🍽️</button></div>
         </div>
         <div className="mt-2 flex justify-end">
           <button onClick={onClick} className="text-xs text-zinc-500 hover:text-zinc-300">Ver detalles →</button>
