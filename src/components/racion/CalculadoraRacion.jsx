@@ -52,7 +52,7 @@ const CalculadoraRacion = ({
   const [diasGuardar, setDiasGuardar] = useState(1);
   const [guardando, setGuardando] = useState(false);
   const [mensajeGuardado, setMensajeGuardado] = useState(null);
-  const [mostrarGuardar, setMostrarGuardar] = useState(false); // controla visibilidad del panel de guardado
+  const [mostrarGuardar, setMostrarGuardar] = useState(false);
 
   const todosAl = [...ALIMENTOS_BASE, ...customAl];
   const filtrados = todosAl.filter(a =>
@@ -62,7 +62,7 @@ const CalculadoraRacion = ({
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
 
-  // Cargar desde localStorage (animal individual o grupo) y precargar destino
+  // Cargar desde localStorage
   useEffect(() => {
     const animalData = localStorage.getItem("formularParaAnimal");
     if (animalData) {
@@ -167,83 +167,49 @@ const CalculadoraRacion = ({
     recalcular();
   };
 
-  // Guardar formulación (corregido)
   const guardarFormulacion = async () => {
     if (!resultado) {
       alert("Primero calcula una ración");
       return;
     }
-    
     if (diasGuardar < 1) {
       alert("Número de días no válido");
       return;
     }
-    
-    let destinoId = null;
-    let destinoNombre = null;
-    let destinoTipo = null;
-    
+    let destinoId = null, destinoNombre = null, destinoTipo = null;
     if (tipoDestino === "animal") {
-      if (!animalSeleccionado) {
-        alert("Selecciona un animal");
-        return;
-      }
+      if (!animalSeleccionado) { alert("Selecciona un animal"); return; }
       const animal = animales.find(a => a._id === animalSeleccionado);
-      if (!animal) {
-        alert("Animal no encontrado");
-        return;
-      }
-      destinoId = animal._id;
-      destinoNombre = animal.nombre;
-      destinoTipo = "animal";
+      if (!animal) { alert("Animal no encontrado"); return; }
+      destinoId = animal._id; destinoNombre = animal.nombre; destinoTipo = "animal";
     } else {
-      if (!grupoSeleccionado) {
-        alert("Selecciona un grupo");
-        return;
-      }
+      if (!grupoSeleccionado) { alert("Selecciona un grupo"); return; }
       const grupo = grupos.find(g => g.id === grupoSeleccionado);
-      if (!grupo) {
-        alert("Grupo no encontrado");
-        return;
-      }
-      destinoId = grupo.id;
-      destinoNombre = grupo.nombre;
-      destinoTipo = "grupo";
+      if (!grupo) { alert("Grupo no encontrado"); return; }
+      destinoId = grupo.id; destinoNombre = grupo.nombre; destinoTipo = "grupo";
     }
-    
     setGuardando(true);
     setMensajeGuardado(null);
-    
     try {
       const formulacionData = {
         fecha: new Date().toISOString(),
         fecha_local: new Date().toLocaleDateString(),
         peso_animal: parseFloat(peso),
-        raza: raza,
-        sistema: sistema,
-        modo: modo,
+        raza, sistema, modo,
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
         ingredientes: resultado.racion.map(r => ({
-          id: r.id,
-          nombre: r.nombre,
-          categoria: r.categoria,
-          kg_dia: r.kg_dia,
-          ms_kg: r.ms_kg,
+          id: r.id, nombre: r.nombre, categoria: r.categoria,
+          kg_dia: r.kg_dia, ms_kg: r.ms_kg,
         })),
-        destino_id: destinoId,
-        destino_nombre: destinoNombre,
-        destino_tipo: destinoTipo,
+        destino_id: destinoId, destino_nombre: destinoNombre, destino_tipo: destinoTipo,
         num_animales: mostrarMultiplicador ? numAnimales : 1,
         num_dias: diasGuardar,
         costo_total_periodo: (resultado.indicadores.costo_dia * diasGuardar).toFixed(2),
         createdAt: new Date()
       };
-      
-      const racionesRef = collection(db, "users", uid, "raciones_historicas");
-      await addDoc(racionesRef, formulacionData);
-      
+      await addDoc(collection(db, "users", uid, "raciones_historicas"), formulacionData);
       setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${diasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
       setTimeout(() => setMensajeGuardado(null), 3000);
@@ -257,13 +223,12 @@ const CalculadoraRacion = ({
 
   const getRiesgoColor = (riesgo) => {
     if (riesgo === "seguro") return "green";
-    if (riesgo === "precaución") return "yellow";
+    if (riesgo === "precaución" || riesgo === "precaución (con pasto)") return "yellow";
     if (riesgo === "alto") return "orange";
     if (riesgo === "crítico") return "red";
     return "gray";
   };
 
-  // Manejo de inputs numéricos que permitan borrar el valor por defecto
   const handleNumAnimalesChange = (e) => {
     const val = e.target.value;
     if (val === "") setNumAnimales("");
@@ -279,6 +244,8 @@ const CalculadoraRacion = ({
     if (val === "") setDiasGuardar("");
     else setDiasGuardar(parseInt(val) || 1);
   };
+
+  const esPastorilAuto = (sistema === "pastoril" && (modo === "optimo" || modo === "economico"));
 
   return (
     <div className="flex flex-col gap-5">
@@ -391,26 +358,22 @@ const CalculadoraRacion = ({
               <button onClick={() => setTipoDestino("animal")} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "animal" ? "bg-emerald-600" : "bg-zinc-800"}`}>🐄 Animal</button>
               <button onClick={() => setTipoDestino("grupo")} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "grupo" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Grupo</button>
             </div>
-            
             {tipoDestino === "animal" && (
               <select value={animalSeleccionado} onChange={e => setAnimalSeleccionado(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2">
                 <option value="" className="bg-zinc-800">Seleccionar animal</option>
                 {animales.map(animal => <option key={animal._id} value={animal._id} className="bg-zinc-800">{animal.nombre} - {animal.peso_inicial}kg</option>)}
               </select>
             )}
-            
             {tipoDestino === "grupo" && (
               <select value={grupoSeleccionado} onChange={e => setGrupoSeleccionado(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2">
                 <option value="" className="bg-zinc-800">Seleccionar grupo</option>
                 {grupos.map(grupo => <option key={grupo.id} value={grupo.id} className="bg-zinc-800">{grupo.nombre} - {grupo.animales?.length || 0} animales</option>)}
               </select>
             )}
-            
             <div className="mb-2">
               <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Días</label>
               <input type="number" value={diasGuardar === "" ? "" : diasGuardar} onChange={handleDiasGuardarChange} className="w-full bg-zinc-800 border border-zinc-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" />
             </div>
-            
             <div className="flex gap-2">
               <Btn onClick={guardarFormulacion} disabled={guardando || !resultado} className="flex-1 py-2 text-sm" variant="primary">
                 {guardando ? "Guardando..." : "💾 Guardar"}
@@ -529,6 +492,21 @@ const CalculadoraRacion = ({
           {resultado.explicaciones && resultado.explicaciones.map((e, i) => (
             <div key={i} className="text-sky-300 text-xs italic mt-2">🧠 {e}</div>
           ))}
+
+          {/* Mensaje informativo para sistema pastoril automático */}
+          {esPastorilAuto && (
+            <div className="mt-3 p-3 bg-blue-950/30 border border-blue-700/50 rounded-lg">
+              <div className="text-blue-400 text-sm font-bold mb-1">🌿 Instrucciones para sistema pastoril</div>
+              <p className="text-blue-300 text-xs">
+                Este suplemento debe ser ofrecido <strong>junto con pasto fresco de buena calidad</strong> en el potrero. 
+                El animal ya consume forraje directamente, por lo que el suplemento solo complementa la energía y proteína que el pasto no alcanza a cubrir. 
+                Asegúrese de que el animal tenga acceso a pasto durante todo el día para mantener una buena salud ruminal y evitar acidosis.
+              </p>
+              <p className="text-blue-300 text-xs mt-1">
+                Si el pasto es escaso o de baja calidad, reduzca la cantidad de suplemento o consulte a un nutricionista.
+              </p>
+            </div>
+          )}
         </Card>
       )}
     </div>
