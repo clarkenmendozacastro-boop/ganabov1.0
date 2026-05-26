@@ -39,13 +39,13 @@ const CalculadoraRacion = ({
   const [estadosCalidad, setEstadosCalidad] = useState({});
   const [ingredientesEliminados, setIngredientesEliminados] = useState(new Set());
   
-  // Estados para Fase 1: Multiplicador de animales y días
+  // Estados para multiplicador
   const [numAnimales, setNumAnimales] = useState(1);
   const [numDias, setNumDias] = useState(1);
   const [mostrarMultiplicador, setMostrarMultiplicador] = useState(false);
   const [modoMultiplicador, setModoMultiplicador] = useState("un_animal");
 
-  // Estados para Fase 2: Guardar formulación
+  // Estados para guardar formulación
   const [tipoDestino, setTipoDestino] = useState("animal");
   const [animalSeleccionado, setAnimalSeleccionado] = useState("");
   const [grupoSeleccionado, setGrupoSeleccionado] = useState("");
@@ -60,35 +60,27 @@ const CalculadoraRacion = ({
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
 
-  // Efecto para cargar datos desde localStorage (animal individual o grupo)
+  // Cargar desde localStorage (animal individual o grupo)
   useEffect(() => {
-    // Primero verificar si viene de un animal individual (desde "Asignar alimentación")
     const animalData = localStorage.getItem("formularParaAnimal");
     if (animalData) {
       try {
-        const { nombre, raza: razaAnimal, peso: pesoAnimal, id } = JSON.parse(animalData);
+        const { nombre, raza: razaAnimal, peso: pesoAnimal } = JSON.parse(animalData);
         setPeso(pesoAnimal.toString());
         setRaza(razaAnimal);
         localStorage.removeItem("formularParaAnimal");
-        const razaNombre = RAZAS.find(r => r.id === razaAnimal)?.nombre || razaAnimal;
-        alert(`🐄 Formulando para el animal "${nombre}" (${pesoAnimal} kg, ${razaNombre})`);
-      } catch (e) {
-        console.error("Error al leer datos del animal:", e);
-      }
+        alert(`🐄 Formulando para el animal "${nombre}" (${pesoAnimal} kg)`);
+      } catch (e) { console.error(e); }
       return;
     }
-    
-    // Si no, verificar si viene de un grupo (desde "Formular para grupo")
     const grupoData = localStorage.getItem("grupoFormula");
     if (grupoData) {
       try {
-        const { peso: pesoGrupo, grupoId, grupoNombre } = JSON.parse(grupoData);
+        const { peso: pesoGrupo, grupoNombre } = JSON.parse(grupoData);
         setPeso(pesoGrupo.toString());
         localStorage.removeItem("grupoFormula");
-        alert(`📦 Formulando para el grupo "${grupoNombre}" con peso promedio ${pesoGrupo} kg`);
-      } catch (e) {
-        console.error("Error al leer datos del grupo:", e);
-      }
+        alert(`📦 Formulando para el grupo "${grupoNombre}" (peso promedio ${pesoGrupo} kg)`);
+      } catch (e) { console.error(e); }
     }
   }, []);
 
@@ -129,18 +121,14 @@ const CalculadoraRacion = ({
   const recalcularConEliminado = (idEliminado) => {
     if (!peso) return;
     let alimentosUsar = [];
-    if (modo === "personalizado") {
-      alimentosUsar = seleccionados.filter(a => a.id !== idEliminado);
-    } else if (modo === "mis_alimentos") {
-      alimentosUsar = alimentosSeleccionadosMis.filter(a => a.id !== idEliminado);
-    } else {
-      alimentosUsar = todosAl.filter(a => a.id !== idEliminado && !ingredientesEliminados.has(a.id));
-    }
+    if (modo === "personalizado") alimentosUsar = seleccionados.filter(a => a.id !== idEliminado);
+    else if (modo === "mis_alimentos") alimentosUsar = alimentosSeleccionadosMis.filter(a => a.id !== idEliminado);
+    else alimentosUsar = todosAl.filter(a => a.id !== idEliminado && !ingredientesEliminados.has(a.id));
     if (alimentosUsar.length === 0) return;
     const res = formularRacionAvanzada({
       pv: peso, sistemaId: sistema, razaId: raza,
       alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
-      estadosCalidad: estadosCalidad, modo: modo,
+      estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
       alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
     });
@@ -150,18 +138,14 @@ const CalculadoraRacion = ({
   const recalcular = () => {
     if (!peso) return;
     let alimentosUsar = [];
-    if (modo === "personalizado") {
-      alimentosUsar = seleccionados;
-    } else if (modo === "mis_alimentos") {
-      alimentosUsar = alimentosSeleccionadosMis;
-    } else {
-      alimentosUsar = todosAl;
-    }
+    if (modo === "personalizado") alimentosUsar = seleccionados;
+    else if (modo === "mis_alimentos") alimentosUsar = alimentosSeleccionadosMis;
+    else alimentosUsar = todosAl;
     if (alimentosUsar.length === 0) return;
     const res = formularRacionAvanzada({
       pv: peso, sistemaId: sistema, razaId: raza,
       alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
-      estadosCalidad: estadosCalidad, modo: modo,
+      estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
       alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
     });
@@ -177,14 +161,13 @@ const CalculadoraRacion = ({
     recalcular();
   };
 
-  // Guardar formulación
+  // ========== GUARDADO CORREGIDO ==========
   const guardarFormulacion = async () => {
     if (!resultado) {
       alert("Primero calcula una ración");
       return;
     }
     
-    // Preguntar por cuántos días
     const dias = prompt("¿Para cuántos días quieres esta formulación?", "1");
     if (dias === null) return;
     const numDiasGuardar = parseInt(dias);
@@ -203,7 +186,10 @@ const CalculadoraRacion = ({
         return;
       }
       const animal = animales.find(a => a._id === animalSeleccionado);
-      if (!animal) return;
+      if (!animal) {
+        alert("Animal no encontrado");
+        return;
+      }
       destinoId = animal._id;
       destinoNombre = animal.nombre;
       destinoTipo = "animal";
@@ -213,7 +199,10 @@ const CalculadoraRacion = ({
         return;
       }
       const grupo = grupos.find(g => g.id === grupoSeleccionado);
-      if (!grupo) return;
+      if (!grupo) {
+        alert("Grupo no encontrado");
+        return;
+      }
       destinoId = grupo.id;
       destinoNombre = grupo.nombre;
       destinoTipo = "grupo";
@@ -223,17 +212,6 @@ const CalculadoraRacion = ({
     setMensajeGuardado(null);
     
     try {
-      // Calcular cantidades para el período
-      const ingredientesConPeriodo = resultado.racion.map(r => ({
-        id: r.id,
-        nombre: r.nombre,
-        categoria: r.categoria,
-        kg_dia: r.kg_dia,
-        ms_kg: r.ms_kg,
-        kg_total_periodo: (r.kg_dia * numDiasGuardar).toFixed(2),
-        costo_periodo: ((r.kg_dia * numDiasGuardar) * (r.precio_total / r.kg_dia)).toFixed(2)
-      }));
-      
       const formulacionData = {
         fecha: new Date().toISOString(),
         fecha_local: new Date().toLocaleDateString(),
@@ -244,9 +222,13 @@ const CalculadoraRacion = ({
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
-        ingredientes: ingredientesConPeriodo,
-        alertas: resultado.alertasCalidad || [],
-        deficiencias: resultado.deficiencias || [],
+        ingredientes: resultado.racion.map(r => ({
+          id: r.id,
+          nombre: r.nombre,
+          categoria: r.categoria,
+          kg_dia: r.kg_dia,
+          ms_kg: r.ms_kg,
+        })),
         destino_id: destinoId,
         destino_nombre: destinoNombre,
         destino_tipo: destinoTipo,
@@ -256,15 +238,15 @@ const CalculadoraRacion = ({
         createdAt: new Date()
       };
       
-      await addDoc(collection(db, "users", uid, "raciones_historicas"), formulacionData);
+      const racionesRef = collection(db, "users", uid, "raciones_historicas");
+      await addDoc(racionesRef, formulacionData);
       
       setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${numDiasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
-      
       setTimeout(() => setMensajeGuardado(null), 3000);
     } catch (error) {
-      console.error("Error guardando formulación:", error);
-      setMensajeGuardado("❌ Error al guardar. Revisa la consola.");
+      console.error("Error guardando:", error);
+      setMensajeGuardado(`❌ Error: ${error.message}`);
     } finally {
       setGuardando(false);
     }
@@ -283,7 +265,7 @@ const CalculadoraRacion = ({
       <h2 className="text-2xl font-black text-white">🐄 GanaBov Engine Pro</h2>
       <Card className="flex flex-col gap-4">
         <Inp label="Peso (kg)" type="number" value={peso} onChange={e => { setPeso(e.target.value); setResultado(null); }} placeholder="280" />
-        <Sel label="Raza" value={raza} onChange={e => setRaza(e.target.value)}>
+        <Sel label="Raza" value={raza} onChange={e => setRaza(e.target.value)} className="bg-zinc-800 border border-zinc-600 text-white rounded-xl">
           {RAZAS.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
         </Sel>
         
@@ -310,48 +292,21 @@ const CalculadoraRacion = ({
           <button onClick={() => setModo("mis_alimentos")} className={`py-1 rounded-xl text-xs font-bold border ${modo === "mis_alimentos" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Mis Alimentos</button>
         </div>
         
-        {/* Selector de modo de cálculo (un animal o lote) */}
         <div className="flex gap-2">
-          <button 
-            onClick={() => { setModoMultiplicador("un_animal"); setMostrarMultiplicador(false); }}
-            className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "un_animal" && !mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}
-          >
-            🐄 Un animal
-          </button>
-          <button 
-            onClick={() => { setModoMultiplicador("lote"); setMostrarMultiplicador(true); }}
-            className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "lote" && mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}
-          >
-            📦 Lote / varios días
-          </button>
+          <button onClick={() => { setModoMultiplicador("un_animal"); setMostrarMultiplicador(false); }} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "un_animal" && !mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}>🐄 Un animal</button>
+          <button onClick={() => { setModoMultiplicador("lote"); setMostrarMultiplicador(true); }} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${modoMultiplicador === "lote" && mostrarMultiplicador ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Lote / varios días</button>
         </div>
 
         {mostrarMultiplicador && (
           <div className="grid grid-cols-2 gap-3">
-            <Inp 
-              label="Número de animales" 
-              type="number" 
-              value={numAnimales} 
-              onChange={e => setNumAnimales(Math.max(1, parseInt(e.target.value) || 1))}
-              min="1" 
-              max="1000"
-            />
-            <Inp 
-              label="Número de días" 
-              type="number" 
-              value={numDias} 
-              onChange={e => setNumDias(Math.max(1, parseInt(e.target.value) || 1))}
-              min="1" 
-              max="90"
-            />
+            <Inp label="Número de animales" type="number" value={numAnimales} onChange={e => setNumAnimales(Math.max(1, parseInt(e.target.value) || 1))} min="1" max="1000" />
+            <Inp label="Número de días" type="number" value={numDias} onChange={e => setNumDias(Math.max(1, parseInt(e.target.value) || 1))} min="1" max="90" />
           </div>
         )}
         
         {modo === "personalizado" && (
           <div>
-            <Btn variant="secondary" onClick={() => setShowSel(!showSel)} className="w-full">
-              {showSel ? "Cerrar" : `+ Elegir alimentos (${seleccionados.length})`}
-            </Btn>
+            <Btn variant="secondary" onClick={() => setShowSel(!showSel)} className="w-full">{showSel ? "Cerrar" : `+ Elegir alimentos (${seleccionados.length})`}</Btn>
             {showSel && (
               <div className="max-h-60 overflow-auto mt-2">
                 <Inp placeholder="Buscar..." value={busq} onChange={e => setBusq(e.target.value)} />
@@ -376,9 +331,7 @@ const CalculadoraRacion = ({
 
         {modo === "mis_alimentos" && (
           <div>
-            <Btn variant="secondary" onClick={() => setShowMisAlimentos(!showMisAlimentos)} className="w-full">
-              {showMisAlimentos ? "Cerrar" : `📦 Seleccionar mis alimentos (${alimentosSeleccionadosMis.length})`}
-            </Btn>
+            <Btn variant="secondary" onClick={() => setShowMisAlimentos(!showMisAlimentos)} className="w-full">{showMisAlimentos ? "Cerrar" : `📦 Seleccionar mis alimentos (${alimentosSeleccionadosMis.length})`}</Btn>
             {showMisAlimentos && (
               <div className="max-h-60 overflow-auto mt-2">
                 <Inp placeholder="Buscar..." value={busq} onChange={e => setBusq(e.target.value)} />
@@ -401,55 +354,31 @@ const CalculadoraRacion = ({
           </div>
         )}
         
-        {/* Guardar formulación */}
         <div className="border-t border-zinc-700 pt-3 mt-1">
           <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">📌 Guardar formulación</div>
           <div className="flex gap-2 mb-2">
-            <button 
-              onClick={() => setTipoDestino("animal")}
-              className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "animal" ? "bg-emerald-600" : "bg-zinc-800"}`}
-            >
-              🐄 Animal
-            </button>
-            <button 
-              onClick={() => setTipoDestino("grupo")}
-              className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "grupo" ? "bg-emerald-600" : "bg-zinc-800"}`}
-            >
-              📦 Grupo
-            </button>
+            <button onClick={() => setTipoDestino("animal")} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "animal" ? "bg-emerald-600" : "bg-zinc-800"}`}>🐄 Animal</button>
+            <button onClick={() => setTipoDestino("grupo")} className={`flex-1 py-1 rounded-xl text-xs font-bold border ${tipoDestino === "grupo" ? "bg-emerald-600" : "bg-zinc-800"}`}>📦 Grupo</button>
           </div>
           
           {tipoDestino === "animal" && (
-            <Sel value={animalSeleccionado} onChange={e => setAnimalSeleccionado(e.target.value)} className="w-full">
-              <option value="">Seleccionar animal</option>
-              {animales.map(animal => (
-                <option key={animal._id} value={animal._id}>{animal.nombre} - {animal.peso_inicial}kg</option>
-              ))}
-            </Sel>
+            <select value={animalSeleccionado} onChange={e => setAnimalSeleccionado(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+              <option value="" className="bg-zinc-800">Seleccionar animal</option>
+              {animales.map(animal => <option key={animal._id} value={animal._id} className="bg-zinc-800">{animal.nombre} - {animal.peso_inicial}kg</option>)}
+            </select>
           )}
           
           {tipoDestino === "grupo" && (
-            <Sel value={grupoSeleccionado} onChange={e => setGrupoSeleccionado(e.target.value)} className="w-full">
-              <option value="">Seleccionar grupo</option>
-              {grupos.map(grupo => (
-                <option key={grupo.id} value={grupo.id}>{grupo.nombre} - {grupo.animales?.length || 0} animales</option>
-              ))}
-            </Sel>
+            <select value={grupoSeleccionado} onChange={e => setGrupoSeleccionado(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+              <option value="" className="bg-zinc-800">Seleccionar grupo</option>
+              {grupos.map(grupo => <option key={grupo.id} value={grupo.id} className="bg-zinc-800">{grupo.nombre} - {grupo.animales?.length || 0} animales</option>)}
+            </select>
           )}
           
-          <Btn 
-            onClick={guardarFormulacion} 
-            disabled={guardando || !resultado}
-            className="w-full mt-2 py-2 text-sm"
-            variant="secondary"
-          >
+          <Btn onClick={guardarFormulacion} disabled={guardando || !resultado} className="w-full mt-2 py-2 text-sm" variant="secondary">
             {guardando ? "Guardando..." : "💾 Guardar formulación"}
           </Btn>
-          {mensajeGuardado && (
-            <div className={`text-xs text-center mt-2 ${mensajeGuardado.includes("✅") ? "text-emerald-400" : "text-red-400"}`}>
-              {mensajeGuardado}
-            </div>
-          )}
+          {mensajeGuardado && <div className={`text-xs text-center mt-2 ${mensajeGuardado.includes("✅") ? "text-emerald-400" : "text-red-400"}`}>{mensajeGuardado}</div>}
         </div>
         
         <button onClick={() => setModoProfesional(!modoProfesional)} className="text-xs text-sky-400 underline text-right">
@@ -480,9 +409,7 @@ const CalculadoraRacion = ({
             </div>
           ))}
 
-          <div className="text-xs font-bold mt-2">
-            Ingredientes {mostrarMultiplicador ? `(${numAnimales} animales × ${numDias} días)` : "(por animal/día)"}
-          </div>
+          <div className="text-xs font-bold mt-2">Ingredientes {mostrarMultiplicador ? `(${numAnimales} animales × ${numDias} días)` : "(por animal/día)"}</div>
           
           {resultado.racion.map((al, i) => {
             const kgPorAnimal = al.kg_dia;
@@ -495,11 +422,7 @@ const CalculadoraRacion = ({
                   <span className="text-sm">{al.nombre}</span>
                   <span className="text-xs text-zinc-500 ml-2">({al.categoria})</span>
                   <div className="flex gap-2 mt-1">
-                    <select 
-                      value={estadosCalidad[al.id] || al.calidad || "Óptimo"}
-                      onChange={(e) => cambiarCalidad(al.id, e.target.value)}
-                      className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}
-                    >
+                    <select value={estadosCalidad[al.id] || al.calidad || "Óptimo"} onChange={(e) => cambiarCalidad(al.id, e.target.value)} className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}>
                       {QUALITY_OPTIONS.map(q => <option key={q} value={q}>{q}</option>)}
                     </select>
                     <button onClick={() => eliminarIngrediente(al.id)} className="text-red-500 text-xs hover:text-red-400">🗑️ Eliminar</button>
@@ -508,15 +431,9 @@ const CalculadoraRacion = ({
                 <div className="text-right">
                   {mostrarMultiplicador ? (
                     <>
-                      <div className="text-emerald-400 font-bold">
-                        {periodoTotal} kg <span className="text-xs text-zinc-500">(total)</span>
-                      </div>
-                      <div className="text-xs text-zinc-500">
-                        {loteTotal} kg/día para {numAnimales} animales
-                      </div>
-                      <div className="text-xs text-zinc-600">
-                        {kgPorAnimal} kg/animal/día
-                      </div>
+                      <div className="text-emerald-400 font-bold">{periodoTotal} kg <span className="text-xs text-zinc-500">(total)</span></div>
+                      <div className="text-xs text-zinc-500">{loteTotal} kg/día para {numAnimales} animales</div>
+                      <div className="text-xs text-zinc-600">{kgPorAnimal} kg/animal/día</div>
                     </>
                   ) : (
                     <>
