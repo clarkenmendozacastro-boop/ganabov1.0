@@ -1,8 +1,7 @@
-// src/components/animales/DetalleAnimal.jsx
 import React, { useState, useEffect } from "react";
 import { deleteDoc, setDoc, collection, getDocs, query, where, orderBy, updateDoc, doc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { userDoc, userCol } from "../../utils/helpers";
+import { userDoc } from "../../utils/helpers";
 import Badge from "../ui/Badge";
 import Btn from "../ui/Btn";
 import Card from "../ui/Card";
@@ -29,7 +28,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
   const bajoRendimiento = animal.pesadas?.length >= 2 && gdp < raza.gdp_base * 0.7;
   const grupoDelAnimal = animal.grupoId ? grupos.find(g => g.id === animal.grupoId) : null;
 
-  const cargarHistorialAlimentacion = async () => {
+  const cargarHistorial = async () => {
     setCargandoHistorial(true);
     try {
       const q = query(
@@ -39,8 +38,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
         orderBy("fecha", "desc")
       );
       const snapshot = await getDocs(q);
-      const historial = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setHistorialRaciones(historial);
+      setHistorialRaciones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (error) {
       console.error("Error cargando historial:", error);
     }
@@ -48,9 +46,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
   };
 
   useEffect(() => {
-    if (tab === "alimentacion") {
-      cargarHistorialAlimentacion();
-    }
+    if (tab === "alimentacion") cargarHistorial();
   }, [tab, animal._id]);
 
   const addPesada = async () => {
@@ -108,7 +104,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
       )}
 
       <div className="flex gap-1 bg-zinc-900 border border-zinc-700/60 rounded-2xl p-1">
-        {["info", "pesadas", "proyeccion", "venta", "alimentacion"].map((id) => (
+        {["info", "pesadas", "proyeccion", "venta", "alimentacion"].map(id => (
           <button key={id} onClick={() => setTab(id)} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tab === id ? "bg-emerald-600 text-white" : "text-zinc-400"}`}>
             {id === "info" ? "Info" : id === "pesadas" ? "Pesadas" : id === "proyeccion" ? "Proyección" : id === "venta" ? "Venta" : "Alimentación"}
           </button>
@@ -124,7 +120,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
             <Card className="text-center py-3"><div className="text-xl font-black text-amber-400">{gdp > 0 ? `${gdp.toFixed(3)} kg/d` : "Sin datos"}</div><div className="text-zinc-500 text-xs">GDP promedio</div></Card>
           </div>
           {animal.notas && (<Card><p className="text-zinc-400 text-sm">📝 {animal.notas}</p></Card>)}
-          <Card><Btn onClick={() => { if (window.confirm(`¿Formular ración para ${animal.nombre} (${ult} kg)?`)) onFormular(animal); }} className="w-full py-2">🍽️ Asignar alimentación para este animal</Btn></Card>
+          <Card><Btn onClick={() => { if (window.confirm(`¿Formular ración para ${animal.nombre} (${ult} kg)?`)) onFormular(animal); }} className="w-full py-2">🍽️ Asignar alimentación</Btn></Card>
           {animal.grupoId && (<Card><Btn onClick={sacarDelGrupo} variant="secondary" className="w-full py-2">📦 Sacar del grupo</Btn></Card>)}
         </div>
       )}
@@ -133,9 +129,9 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
         <div className="flex flex-col gap-3">
           <Card className="flex flex-col gap-3">
             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Registrar pesada</div>
-            <Inp label="Fecha" type="date" value={np.fecha} onChange={(e) => setNp((p) => ({ ...p, fecha: e.target.value }))} />
-            <Inp label="Peso (kg)" type="number" value={np.peso} onChange={(e) => setNp((p) => ({ ...p, peso: e.target.value }))} placeholder="285" />
-            <Inp label="Nota (opcional)" value={np.nota} onChange={(e) => setNp((p) => ({ ...p, nota: e.target.value }))} placeholder="Observación..." />
+            <Inp label="Fecha" type="date" value={np.fecha} onChange={e => setNp(p => ({ ...p, fecha: e.target.value }))} />
+            <Inp label="Peso (kg)" type="number" value={np.peso} onChange={e => setNp(p => ({ ...p, peso: e.target.value }))} placeholder="285" />
+            <Inp label="Nota (opcional)" value={np.nota} onChange={e => setNp(p => ({ ...p, nota: e.target.value }))} placeholder="Observación..." />
             <Btn onClick={addPesada} disabled={saving}>{saving ? "Guardando..." : "Registrar"}</Btn>
           </Card>
           {[...(animal.pesadas || [])].reverse().map((p, i) => (
@@ -151,7 +147,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
 
       {tab === "proyeccion" && (
         <div className="flex flex-col gap-3">
-          {[450, 500].map((meta) => {
+          {[450, 500].map(meta => {
             const proj = meta === 450 ? proy450 : proy500;
             return proj ? (
               <Card key={meta}>
@@ -198,7 +194,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
           {cargandoHistorial ? (
             <p className="text-zinc-500 text-sm text-center">Cargando historial...</p>
           ) : historialRaciones.length === 0 ? (
-            <p className="text-zinc-500 text-sm text-center">No hay formulaciones guardadas para este animal.</p>
+            <p className="text-zinc-500 text-sm text-center">No hay formulaciones guardadas.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {historialRaciones.map((h, idx) => (
