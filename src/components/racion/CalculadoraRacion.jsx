@@ -93,7 +93,6 @@ const CalculadoraRacion = ({
     setIngredientesEliminados(new Set());
   }, [modo, sistema, raza, peso]);
 
-  // Funciones de selección de alimentos
   const toggleSeleccion = (id) => {
     setSelIds(prev => {
       const nuevo = new Set(prev);
@@ -167,7 +166,7 @@ const CalculadoraRacion = ({
     recalcular();
   };
 
-  // Guardar formulación
+  // ========== FUNCIÓN DE GUARDADO MEJORADA ==========
   const guardarFormulacion = async () => {
     if (!resultado) {
       alert("Primero calcula una ración");
@@ -182,43 +181,61 @@ const CalculadoraRacion = ({
       if (!animalSeleccionado) { alert("Selecciona un animal"); return; }
       const animal = animales.find(a => a._id === animalSeleccionado);
       if (!animal) { alert("Animal no encontrado"); return; }
-      destinoId = animal._id; destinoNombre = animal.nombre; destinoTipo = "animal";
+      destinoId = animal._id;
+      destinoNombre = animal.nombre;
+      destinoTipo = "animal";
     } else {
       if (!grupoSeleccionado) { alert("Selecciona un grupo"); return; }
       const grupo = grupos.find(g => g.id === grupoSeleccionado);
       if (!grupo) { alert("Grupo no encontrado"); return; }
-      destinoId = grupo.id; destinoNombre = grupo.nombre; destinoTipo = "grupo";
+      destinoId = grupo.id;
+      destinoNombre = grupo.nombre;
+      destinoTipo = "grupo";
+    }
+
+    if (!uid) {
+      alert("Error: No se ha iniciado sesión (uid no disponible)");
+      console.error("uid es null o undefined");
+      return;
     }
 
     setGuardando(true);
     setMensajeGuardado(null);
     try {
-      if (!uid) throw new Error("Usuario no autenticado");
       const racionesRef = collection(db, "users", uid, "raciones_historicas");
       const formulacionData = {
         fecha: new Date().toISOString(),
         fecha_local: new Date().toLocaleDateString(),
         peso_animal: parseFloat(peso),
-        raza, sistema, modo,
+        raza,
+        sistema,
+        modo,
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
         ingredientes: resultado.racion.map(r => ({
-          id: r.id, nombre: r.nombre, categoria: r.categoria,
-          kg_dia: r.kg_dia, ms_kg: r.ms_kg,
+          id: r.id,
+          nombre: r.nombre,
+          categoria: r.categoria,
+          kg_dia: r.kg_dia,
+          ms_kg: r.ms_kg,
         })),
-        destino_id: destinoId, destino_nombre: destinoNombre, destino_tipo: destinoTipo,
+        destino_id: destinoId,
+        destino_nombre: destinoNombre,
+        destino_tipo: destinoTipo,
         num_animales: mostrarMultiplicador ? numAnimales : 1,
         num_dias: diasGuardar,
         costo_total_periodo: (resultado.indicadores.costo_dia * diasGuardar).toFixed(2),
         createdAt: new Date()
       };
-      await addDoc(racionesRef, formulacionData);
+      console.log("Guardando formulación en Firestore:", formulacionData);
+      const docRef = await addDoc(racionesRef, formulacionData);
+      console.log("Documento guardado con ID:", docRef.id);
       setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${diasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
       setTimeout(() => setMensajeGuardado(null), 3000);
     } catch (error) {
-      console.error("Error guardando:", error);
+      console.error("Error al guardar en Firestore:", error);
       setMensajeGuardado(`❌ Error: ${error.message}`);
     } finally {
       setGuardando(false);
