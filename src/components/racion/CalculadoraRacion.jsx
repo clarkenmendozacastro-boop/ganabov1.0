@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../firebase";
-import { userCol } from "../../utils/helpers";
 import Card from "../ui/Card";
 import Inp from "../ui/Inp";
 import Sel from "../ui/Sel";
@@ -62,7 +61,7 @@ const CalculadoraRacion = ({
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
 
-  // Cargar desde localStorage
+  // Cargar desde localStorage (animal o grupo)
   useEffect(() => {
     const animalData = localStorage.getItem("formularParaAnimal");
     if (animalData) {
@@ -94,6 +93,7 @@ const CalculadoraRacion = ({
     setIngredientesEliminados(new Set());
   }, [modo, sistema, raza, peso]);
 
+  // Funciones de selección de alimentos
   const toggleSeleccion = (id) => {
     setSelIds(prev => {
       const nuevo = new Set(prev);
@@ -167,6 +167,7 @@ const CalculadoraRacion = ({
     recalcular();
   };
 
+  // Guardar formulación
   const guardarFormulacion = async () => {
     if (!resultado) {
       alert("Primero calcula una ración");
@@ -212,7 +213,6 @@ const CalculadoraRacion = ({
         costo_total_periodo: (resultado.indicadores.costo_dia * diasGuardar).toFixed(2),
         createdAt: new Date()
       };
-      console.log("Guardando:", formulacionData);
       await addDoc(racionesRef, formulacionData);
       setMensajeGuardado(`✅ Formulación guardada para ${destinoNombre} (${diasGuardar} días)`);
       if (onFormulacionGuardada) onFormulacionGuardada();
@@ -235,18 +235,15 @@ const CalculadoraRacion = ({
 
   const handleNumAnimalesChange = (e) => {
     const val = e.target.value;
-    if (val === "") setNumAnimales("");
-    else setNumAnimales(parseInt(val) || 1);
+    setNumAnimales(val === "" ? "" : parseInt(val) || 1);
   };
   const handleNumDiasChange = (e) => {
     const val = e.target.value;
-    if (val === "") setNumDias("");
-    else setNumDias(parseInt(val) || 1);
+    setNumDias(val === "" ? "" : parseInt(val) || 1);
   };
   const handleDiasGuardarChange = (e) => {
     const val = e.target.value;
-    if (val === "") setDiasGuardar("");
-    else setDiasGuardar(parseInt(val) || 1);
+    setDiasGuardar(val === "" ? "" : parseInt(val) || 1);
   };
 
   const esPastorilAuto = (sistema === "pastoril" && (modo === "optimo" || modo === "economico"));
