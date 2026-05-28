@@ -1,3 +1,4 @@
+// src/components/animales/DetalleAnimal.jsx
 import React, { useState, useEffect } from "react";
 import { deleteDoc, setDoc, collection, getDocs, query, where, orderBy, updateDoc, doc } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -28,7 +29,9 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
   const bajoRendimiento = animal.pesadas?.length >= 2 && gdp < raza.gdp_base * 0.7;
   const grupoDelAnimal = animal.grupoId ? grupos.find(g => g.id === animal.grupoId) : null;
 
-  const cargarHistorial = async () => {
+  // Cargar historial de alimentación
+  const cargarHistorialAlimentacion = async () => {
+    if (!uid || !animal._id) return;
     setCargandoHistorial(true);
     try {
       const q = query(
@@ -38,16 +41,21 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
         orderBy("fecha", "desc")
       );
       const snapshot = await getDocs(q);
-      setHistorialRaciones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const historial = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHistorialRaciones(historial);
+      console.log("Historial cargado:", historial.length, "registros");
     } catch (error) {
       console.error("Error cargando historial:", error);
     }
     setCargandoHistorial(false);
   };
 
+  // Recargar cuando se activa la pestaña "alimentacion"
   useEffect(() => {
-    if (tab === "alimentacion") cargarHistorial();
-  }, [tab, animal._id]);
+    if (tab === "alimentacion") {
+      cargarHistorialAlimentacion();
+    }
+  }, [tab, animal._id, uid]);
 
   const addPesada = async () => {
     if (!np.peso) return;
@@ -194,7 +202,7 @@ const DetalleAnimal = ({ animal, onUpdate, onDelete, onBack, preciosUsr, uid, gr
           {cargandoHistorial ? (
             <p className="text-zinc-500 text-sm text-center">Cargando historial...</p>
           ) : historialRaciones.length === 0 ? (
-            <p className="text-zinc-500 text-sm text-center">No hay formulaciones guardadas.</p>
+            <p className="text-zinc-500 text-sm text-center">No hay formulaciones guardadas para este animal.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {historialRaciones.map((h, idx) => (
