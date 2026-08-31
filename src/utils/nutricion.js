@@ -1,8 +1,8 @@
 // src/utils/nutricion.js
-// ============================================================
+// ===========================================================
 // GANABOV ENGINE PRO - MOTOR NUTRICIONAL AVANZADO
 // Incluye: ENm, ENg, peNDF, PDR/PNR, acidosis, sincronía, scores
-// ============================================================
+// ===========================================================
 
 export const FASES_FEEDLOT = {
   inicio: { nombre: "Inicio", dias: 14, conc_max: 50, peNDF_min: 22, forraje_min: 50, gdp_esperado: 1.2 },
