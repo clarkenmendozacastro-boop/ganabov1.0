@@ -1,8 +1,8 @@
 // src/utils/nutricion.js
-// ===========================================================
+// ============================================================
 // GANABOV ENGINE PRO - MOTOR NUTRICIONAL AVANZADO
 // Incluye: ENm, ENg, peNDF, PDR/PNR, acidosis, sincronía, scores
-// ===========================================================
+// ============================================================
 
 export const FASES_FEEDLOT = {
   inicio: { nombre: "Inicio", dias: 14, conc_max: 50, peNDF_min: 22, forraje_min: 50, gdp_esperado: 1.2 },
@@ -11,7 +11,7 @@ export const FASES_FEEDLOT = {
 };
 
 const CONFIG_SISTEMAS = {
-  pastoril: { nombre: "Pastoril", gdp_min: 0.4, gdp_max: 0.7, cms_pct: 2.2, forraje_min: 70, concentrado_max: 30, enm_factor: 1.0, es_extensivo: true },
+  pastoril: { nombre: "Pastoril", gdp_min: 0.4, gdp_max: 0.7, cms_pct: 1.0, forraje_min: 0, concentrado_max: 100, enm_factor: 1.0, es_extensivo: true },
   semiIntensivo: { nombre: "Semi-intensivo", gdp_min: 0.8, gdp_max: 1.2, cms_pct: 2.5, forraje_min: 55, concentrado_max: 45, enm_factor: 1.0, es_extensivo: false },
   feedlot: { nombre: "Feedlot", gdp_min: 1.2, gdp_max: 2.0, cms_pct: 2.8, forraje_min: 30, concentrado_max: 70, enm_factor: 0.85, es_extensivo: false }
 };
@@ -39,6 +39,7 @@ const RAZA_PARAMS = {
   otro: { consumo: 0.98, gdp: 0.85 }
 };
 
+// Ingredientes restringidos
 const INGREDIENTES_RESTRINGIDOS = {
   pastoril: ['grasa_bypass', 'harina_sangre', 'harina_pescado', 'monensina'],
   semiIntensivo: ['grasa_bypass', 'harina_sangre', 'harina_pescado'],
@@ -48,15 +49,8 @@ const INGREDIENTES_RESTRINGIDOS = {
 const GRANOS_TRADICIONALES = ['maiz_amarillo', 'maiz_blanco', 'sorgo_grano', 'sorgo_rojo', 'cebada_grano', 'trigo_grano', 'avena_grano'];
 const SUBPRODUCTOS_FIBROSOS = ['cascarilla_soya', 'afrecho_trigo', 'salvado_trigo', 'pulpa_citrica', 'germen_maiz'];
 
-// Prioridad de proteicos en modo óptimo
-const PROTEICO_PRIORITY = {
-  harina_soya: 0, soya_integral: 0,
-  expeller_soya: 1,
-  torta_mani: 2, torta_canola: 2,
-  torta_girasol: 3, torta_algodon: 3,
-  harina_pescado: 4,
-  harina_carne: 5, harina_sangre: 5
-};
+// Umbral mínimo de peNDF para considerar acidosis segura (general)
+const peNDF_MIN_SEGURO = 22; // % de la MS
 
 export function formularRacionAvanzada({
   pv, sistemaId, razaId = "otro", alimentosDisponibles,
@@ -87,7 +81,7 @@ export function formularRacionAvanzada({
   gdpObjetivo = Math.min(gdpObjetivo, sistema.gdp_max * razaParam.gdp);
   gdpObjetivo = Math.max(gdpObjetivo, sistema.gdp_min * razaParam.gdp * 0.8);
 
-  // Requerimientos NRC
+  // Requerimientos
   const pvMet = Math.pow(pvN, 0.75);
   const ENm_mant = 0.077 * pvMet * 1.1;
   const ENg_por_kg = 0.0635 * Math.pow(pvN, 0.6) + 4.1 * gdpObjetivo;
@@ -95,14 +89,12 @@ export function formularRacionAvanzada({
   let ENm_total = (ENm_mant + ENm_crec) * sistema.enm_factor;
   const PB_total = (3.8 * pvMet + gdpObjetivo * 268 - 29.4 * ENg_por_kg) / 0.65;
 
-  // Consumo de MS (ajustado por peso)
+  // Consumo de MS base
   let cmsBase;
   if (sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos) {
-    cmsBase = pvN * 0.01;
+    cmsBase = pvN * 0.01; // 1% PV para suplemento
   } else {
-    // Ajuste fino del CMS según peso: para animales >250 kg, reducción del 2% por cada 100 kg
-    const factorPeso = Math.max(0.85, 1 - 0.02 * ((pvN - 250) / 100));
-    cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo * factorPeso;
+    cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo;
   }
   if (sistemaId === "feedlot" && fase) {
     if (fase === "inicio") cmsBase *= 0.92;
@@ -135,6 +127,7 @@ export function formularRacionAvanzada({
     };
   });
 
+  // Separar categorías
   let forrajes = alimentos.filter(a => a.categoria === "forraje");
   let energeticos = alimentos.filter(a => a.categoria === "energético");
   let proteicos = alimentos.filter(a => a.categoria === "proteico");
@@ -143,9 +136,10 @@ export function formularRacionAvanzada({
 
   const esPastorilAuto = (sistemaId === "pastoril" && !esPersonalizado && !esMisAlimentos);
   if (esPastorilAuto) {
-    forrajes = [];
+    forrajes = []; // no usar forrajes en el suplemento
   }
 
+  // Detectar deficiencias en mis_alimentos
   let deficiencias = [];
   if (esMisAlimentos) {
     if (forrajes.length === 0) deficiencias.push({ tipo: "forraje", msg: "⚠️ No has seleccionado ningún FORRAJE. El animal no podrá alimentarse correctamente." });
@@ -154,14 +148,13 @@ export function formularRacionAvanzada({
     if (minerales.length === 0) deficiencias.push({ tipo: "mineral", msg: "⚠️ FALTA SAL MINERAL. Riesgo de deficiencias minerales." });
   }
 
-  // ========== ORDENAR SEGÚN MODO ==========
+  // Ordenar según modo
   if (esEconomico) {
     forrajes.sort((a,b) => a.precio_kg - b.precio_kg);
     energeticos.sort((a,b) => a.precio_kg - b.precio_kg);
     proteicos.sort((a,b) => a.precio_kg - b.precio_kg);
     subproductosFibrosos.sort((a,b) => a.precio_kg - b.precio_kg);
   } else {
-    // MODO ÓPTIMO: Fibra > Energía > Proteína (calidad)
     forrajes.sort((a,b) => b.peNDF - a.peNDF);
     energeticos.sort((a,b) => {
       const aEsGrano = GRANOS_TRADICIONALES.includes(a.id);
@@ -171,8 +164,18 @@ export function formularRacionAvanzada({
       return b.enm - a.enm;
     });
     proteicos.sort((a,b) => {
-      const pA = PROTEICO_PRIORITY[a.id] ?? 6;
-      const pB = PROTEICO_PRIORITY[b.id] ?? 6;
+      // Prioridad: Soya > tortas > harinas animales
+      const getPriority = (id) => {
+        if (id === 'harina_soya' || id === 'soya_integral') return 0;
+        if (id === 'expeller_soya') return 1;
+        if (id === 'torta_mani' || id === 'torta_canola') return 2;
+        if (id === 'torta_girasol' || id === 'torta_algodon') return 3;
+        if (id === 'harina_pescado') return 4;
+        if (id === 'harina_carne' || id === 'harina_sangre') return 5;
+        return 6;
+      };
+      const pA = getPriority(a.id);
+      const pB = getPriority(b.id);
       if (pA !== pB) return pA - pB;
       return b.prot - a.prot;
     });
@@ -205,7 +208,9 @@ export function formularRacionAvanzada({
     peNDF_acum += msKg * (al.peNDF / 100);
   };
 
-  // 1. Forraje (solo si no es pastoril auto)
+  // ============================================================
+  // 1. FORRAJE (solo si no es pastoril auto)
+  // ============================================================
   if (!esPastorilAuto && forrajes.length > 0) {
     let forrajePrincipal = forrajes[0];
     let forrajeSecundario = forrajes.length > 1 ? forrajes[1] : null;
@@ -219,70 +224,155 @@ export function formularRacionAvanzada({
     }
   }
 
-  // 2. Mineral (siempre)
+  // ============================================================
+  // 2. MINERAL (siempre)
+  // ============================================================
   if (minerales.length) {
     agregar(minerales[0], pvN * 0.0004);
   }
 
-  // 3. Concentrados (prioridad energía en óptimo)
+  // ============================================================
+  // 3. CONCENTRADOS (ENERGÉTICOS Y PROTEICOS) - CORREGIDO
+  // ============================================================
   let msRestante = cmsBase - ms_acum;
   let msConcentradoMax = Math.min(msRestante, cmsBase * (maxConcentrado / 100));
 
-  if (msConcentradoMax > 0.2) {
-    const deficitENm = Math.max(0, ENm_total - enm_acum);
-    const deficitPB = Math.max(0, PB_total - pb_acum);
-    
-    let msEnergia = 0, msProteina = 0, msFibra = 0;
-    
-    if (esPastorilAuto) {
-      // Pastoril: incluir fibra y limitar maíz
-      if (subproductosFibrosos.length > 0) {
-        msFibra = Math.min(msConcentradoMax * 0.30, 0.8);
-        const fibra = subproductosFibrosos[0];
-        agregar(fibra, msFibra / (fibra.ms / 100));
-        msConcentradoMax -= msFibra;
+  // Calcular déficit inicial
+  const deficitENmInicial = Math.max(0, ENm_total - enm_acum);
+  const deficitPBInicial = Math.max(0, PB_total - pb_acum);
+
+  // Umbral para considerar déficit significativo
+  const UMBRAL_DEFICIT_ENm = 0.3; // Mcal
+  const UMBRAL_DEFICIT_PB = 50;   // g
+
+  // Función para asignar energéticos hasta cubrir déficit ENm o agotar espacio/ingredientes
+  const asignarEnergeticos = (msDisponible, deficitENm, peNDF_actual, ms_total_actual) => {
+    let msUsada = 0;
+    let deficitRestante = deficitENm;
+    const energéticosUsados = [];
+
+    // Ordenar energéticos para priorizar los que maximizan ENm por unidad de MS
+    const energéticosOrdenados = [...energeticos].sort((a,b) => b.enm - a.enm);
+
+    for (const e of energéticosOrdenados) {
+      if (deficitRestante <= UMBRAL_DEFICIT_ENm) break;
+      if (msDisponible - msUsada < 0.05) break;
+
+      // Límite máximo de este ingrediente (max_ms_pct)
+      let maxMs = msDisponible - msUsada;
+      if (e.max_ms_pct) {
+        const maxMsPorPct = cmsBase * (e.max_ms_pct / 100);
+        maxMs = Math.min(maxMs, maxMsPorPct - (racion.filter(r => r.id === e.id).reduce((s,r) => s + r.ms_kg, 0)));
       }
-      const maxMsMaiz = Math.min(pvN * 0.004, 1.8);
-      let msEnergiaPosible = Math.min(msConcentradoMax * 0.7, maxMsMaiz);
-      if (energeticos.length && msEnergiaPosible > 0.1) {
-        msEnergia = msEnergiaPosible;
-        agregar(energeticos[0], msEnergia / (energeticos[0].ms / 100));
-        msConcentradoMax -= msEnergia;
-      }
-      if (deficitPB > 50 && proteicos.length && msConcentradoMax > 0.1) {
-        let msProt = Math.min(msConcentradoMax, cmsBase * 0.08);
-        agregar(proteicos[0], msProt / (proteicos[0].ms / 100));
-      }
+      if (maxMs < 0.05) continue;
+
+      // Calcular cuánto necesitamos de este ingrediente para cubrir el déficit
+      let msNecesaria = Math.min(deficitRestante / e.enm, maxMs);
+      msNecesaria = Math.max(msNecesaria, 0.1); // al menos 0.1 kg MS
+
+      // Verificar que no se exceda el espacio total
+      msNecesaria = Math.min(msNecesaria, msDisponible - msUsada);
+
+      if (msNecesaria < 0.05) continue;
+
+      // Agregar el ingrediente
+      agregar(e, msNecesaria / (e.ms / 100));
+      msUsada += msNecesaria;
+      deficitRestante -= msNecesaria * e.enm;
+      energéticosUsados.push({ id: e.id, ms: msNecesaria, enm: e.enm });
+    }
+
+    return { msUsada, deficitRestante };
+  };
+
+  // Asignar energéticos si hay déficit y espacio
+  let deficitENmRestante = deficitENmInicial;
+  let msConcentradoUsado = 0;
+
+  if (msConcentradoMax > 0.2 && deficitENmRestante > UMBRAL_DEFICIT_ENm && energeticos.length > 0) {
+    const resultado = asignarEnergeticos(msConcentradoMax, deficitENmRestante, peNDF_acum, ms_acum);
+    msConcentradoUsado += resultado.msUsada;
+    deficitENmRestante = resultado.deficitRestante;
+  }
+
+  // Ahora, verificar si el peNDF actual es suficiente
+  const peNDF_pct_actual = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
+  let peNDF_min = FASES_FEEDLOT[fase]?.peNDF_min || peNDF_MIN_SEGURO;
+  if (sistemaId === "pastoril") peNDF_min = 22; // en pastoril, se asume que el pasto del potrero aporta, pero solo es suplemento
+
+  // Si el peNDF es bajo, reducir energéticos de menor peNDF hasta que se cumpla el mínimo o se llegue a déficit de ENm > 0.5
+  let iter = 0;
+  const MAX_ITER = 10;
+  while (peNDF_pct_actual < peNDF_min && iter < MAX_ITER && deficitENmRestante < 0.5) {
+    iter++;
+    // Buscar el ingrediente energético en la ración con menor peNDF (generalmente maíz, sorgo)
+    const candidatos = racion.filter(r => r.categoria === "energético" && r.ms_kg > 0.05);
+    if (candidatos.length === 0) break;
+    // Ordenar por peNDF ascendente (el de menor peNDF primero)
+    candidatos.sort((a,b) => {
+      const alA = alimentos.find(al => al.id === a.id);
+      const alB = alimentos.find(al => al.id === b.id);
+      return (alA?.peNDF || 0) - (alB?.peNDF || 0);
+    });
+    const aEliminar = candidatos[0];
+    const alEliminar = alimentos.find(al => al.id === aEliminar.id);
+    if (!alEliminar) break;
+    // Reducir en 0.05 kg MS o lo que sea necesario
+    const reduccion = Math.min(0.1, aEliminar.ms_kg);
+    if (reduccion < 0.01) break;
+    // Remover esa cantidad de MS del ingrediente
+    const kgReducir = reduccion / (alEliminar.ms / 100);
+    // Actualizar el elemento en racion
+    const idx = racion.indexOf(aEliminar);
+    if (idx === -1) break;
+    const nuevoKg = Math.max(0, aEliminar.kg_dia - kgReducir);
+    if (nuevoKg < 0.01) {
+      // Eliminar completamente
+      racion.splice(idx, 1);
+      ms_acum -= aEliminar.ms_kg;
+      enm_acum -= aEliminar.ms_kg * alEliminar.enm;
+      peNDF_acum -= aEliminar.ms_kg * (alEliminar.peNDF / 100);
     } else {
-      // MODO ÓPTIMO: Energía primero, luego proteína (solo hasta 110% PB)
-      if (deficitENm > 0.2 && energeticos.length > 0) {
-        const mejorE = energeticos[0];
-        let msNecesaria = Math.min(deficitENm / mejorE.enm, msConcentradoMax * 0.85);
-        msNecesaria = Math.max(msNecesaria, 0.3);
-        msEnergia = msNecesaria;
-        agregar(mejorE, msEnergia / (mejorE.ms / 100));
-        msConcentradoMax -= msEnergia;
-      }
-      
-      // Proteína (solo si hay déficit real y no excede 110% del requerimiento)
-      const pbActual = pb_acum;
-      const pbMaximo = PB_total * 1.10;
-      const pbDisponible = Math.max(0, pbMaximo - pbActual);
-      if (deficitPB > 30 && proteicos.length > 0 && msConcentradoMax > 0.1 && pbDisponible > 30) {
-        const mejorP = proteicos[0];
-        let msNecesaria = Math.min(pbDisponible / 1000 / (mejorP.prot / 100), msConcentradoMax);
-        msNecesaria = Math.max(msNecesaria, 0.1);
-        if (msNecesaria > 0.1) {
-          agregar(mejorP, msNecesaria / (mejorP.ms / 100));
-          msConcentradoMax -= msNecesaria;
-        }
-      }
-      
-      // Si aún sobra espacio, agregar más energético
-      if (msConcentradoMax > 0.2 && energeticos.length > 0) {
-        const mejorE = energeticos[0];
-        agregar(mejorE, msConcentradoMax / (mejorE.ms / 100));
-      }
+      // Actualizar
+      const nuevaMs = nuevoKg * (alEliminar.ms / 100);
+      const diffMs = aEliminar.ms_kg - nuevaMs;
+      aEliminar.kg_dia = +nuevoKg.toFixed(2);
+      aEliminar.ms_kg = +nuevaMs.toFixed(2);
+      aEliminar.enm_kg = +(nuevaMs * alEliminar.enm).toFixed(2);
+      aEliminar.pb_kg = +(nuevaMs * (alEliminar.prot / 100) * 1000).toFixed(0);
+      aEliminar.precio_total = +(nuevoKg * alEliminar.precio_kg).toFixed(2);
+      ms_acum -= diffMs;
+      enm_acum -= diffMs * alEliminar.enm;
+      peNDF_acum -= diffMs * (alEliminar.peNDF / 100);
+    }
+    // Recalcular peNDF
+    peNDF_pct_actual = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
+    // Recalcular déficit ENm restante (podría haber aumentado)
+    deficitENmRestante = Math.max(0, ENm_total - enm_acum);
+  }
+
+  // Si después de ajustar, aún hay déficit de ENm significativo, añadir alerta
+  let alertaDeficitEnergetico = false;
+  if (deficitENmRestante > UMBRAL_DEFICIT_ENm) {
+    alertaDeficitEnergetico = true;
+  }
+
+  // Ahora, asignar proteicos si hay espacio y déficit de PB
+  let msRestanteParaProteicos = msConcentradoMax - msConcentradoUsado;
+  if (msRestanteParaProteicos > 0.1 && deficitPBInicial > UMBRAL_DEFICIT_PB && proteicos.length > 0) {
+    // Priorizar proteicos según orden ya establecido
+    const mejorProteico = proteicos[0];
+    // Limitar proteína a máximo 8% de la MS total (para evitar excesos)
+    const maxMsProteina = cmsBase * 0.08;
+    let msProteina = Math.min(msRestanteParaProteicos, maxMsProteina);
+    // Calcular cuánta proteína aporta
+    const pbAportada = msProteina * (mejorProteico.prot / 100) * 1000;
+    if (pbAportada > deficitPBInicial) {
+      // Reducir para no sobrepasar el déficit
+      msProteina = deficitPBInicial / ((mejorProteico.prot / 100) * 1000);
+    }
+    if (msProteina > 0.1) {
+      agregar(mejorProteico, msProteina / (mejorProteico.ms / 100));
     }
   }
 
@@ -294,12 +384,12 @@ export function formularRacionAvanzada({
     }
   }
 
-  // Calcular indicadores
+  // Calcular indicadores finales
   ms_acum = Math.round(ms_acum * 100) / 100;
   const peNDF_pct = ms_acum > 0 ? (peNDF_acum / ms_acum) * 100 : 0;
   const pctConcentrado = ((ms_acum - racion.filter(r => r.categoria === "forraje").reduce((s,r) => s + r.ms_kg, 0)) / ms_acum) * 100;
 
-  // Score acidosis
+  // Score acidosis (se mantiene igual)
   let scoreAcidosis = 0;
   if (peNDF_pct < 18) scoreAcidosis += 40;
   else if (peNDF_pct < 24) scoreAcidosis += 25;
@@ -313,35 +403,33 @@ export function formularRacionAvanzada({
   else if (scoreAcidosis >= 50) riesgoAcidosis = "alto";
   else if (scoreAcidosis >= 25) riesgoAcidosis = "precaución";
 
+  // En pastoril automático transformamos el riesgo para no alarmar
   let riesgoMostrado = riesgoAcidosis;
   if (esPastorilAuto && (riesgoAcidosis === "crítico" || riesgoAcidosis === "alto")) {
     riesgoMostrado = "precaución (con pasto)";
   }
 
-  // GDP estimada (ajustada por energía y proteína)
+  // GDP estimada (ahora penalizada por déficit energético real)
   let gdpEstimada = gdpObjetivo;
   const cumplimientoENm = Math.min(1.2, enm_acum / ENm_total);
-  
-  // Penalización por déficit energético
-  if (cumplimientoENm < 0.95) {
+  if (cumplimientoENm < 0.9) {
+    // Penalización progresiva
     const deficit = 1 - cumplimientoENm;
-    gdpEstimada = gdpEstimada * (1 - deficit * 1.5);
+    const penalizacion = deficit * 1.2;
+    gdpEstimada = gdpEstimada * (1 - Math.min(penalizacion, 0.6));
   } else if (cumplimientoENm < 1.0) {
-    gdpEstimada = gdpEstimada * (0.9 + 0.1 * (cumplimientoENm / 0.95));
+    gdpEstimada = gdpEstimada * (0.9 + cumplimientoENm * 0.1);
   }
-  
-  // Penalización por exceso de proteína (>110%)
-  const cumplimientoPB = pb_acum / PB_total;
-  if (cumplimientoPB > 1.10) {
-    const exceso = (cumplimientoPB - 1.10) * 0.5;
-    gdpEstimada = gdpEstimada * (1 - Math.min(exceso, 0.15));
+  // Penalización por exceso de proteína (reduce eficiencia)
+  const cumplimientoPB = Math.min(1.5, pb_acum / PB_total);
+  if (cumplimientoPB > 1.2) {
+    const exceso = (cumplimientoPB - 1.2) * 0.3;
+    gdpEstimada = gdpEstimada * (1 - Math.min(exceso, 0.2));
   }
-  
   // Penalización por acidosis
-  if (scoreAcidosis > 60) gdpEstimada *= 0.92;
-  else if (scoreAcidosis > 40) gdpEstimada *= 0.96;
-  
-  // Límites realistas
+  if (scoreAcidosis > 60) gdpEstimada *= 0.9;
+  else if (scoreAcidosis > 40) gdpEstimada *= 0.95;
+  if (esPastorilAuto && cumplimientoENm < 0.9) gdpEstimada *= 0.9;
   gdpEstimada = Math.min(gdpEstimada, sistema.gdp_max * razaParam.gdp);
   gdpEstimada = Math.max(gdpEstimada, sistema.gdp_min * razaParam.gdp * 0.7);
   gdpEstimada = Math.round(gdpEstimada * 100) / 100;
@@ -360,8 +448,14 @@ export function formularRacionAvanzada({
       explicaciones.push("⚠️ Aunque el suplemento es energético, el riesgo de acidosis es bajo si se ofrece junto con suficiente pasto de buena calidad.");
     }
   }
-  if (!esEconomico && cumplimientoENm < 0.9) {
-    explicaciones.push("⚡ Se priorizó la energía para garantizar la ganancia de peso. Aumente el maíz o reduzca la proteína si el costo es alto.");
+  if (alertaDeficitEnergetico) {
+    explicaciones.push("⚠️ DÉFICIT ENERGÉTICO ESTRUCTURAL: No se pudo cubrir el 100% de la energía requerida con los ingredientes disponibles, respetando los límites de fibra y seguridad. Considere agregar más alimentos energéticos (maíz, sorgo, melaza) o reducir el nivel de forraje si es posible.");
+  }
+
+  // Alertas adicionales
+  let alertas = [];
+  if (alertaDeficitEnergetico) {
+    alertas.push(`⚠️ Déficit energético: ${deficitENmRestante.toFixed(2)} Mcal por debajo del requerimiento (${(enm_acum/ENm_total*100).toFixed(0)}% de cobertura).`);
   }
 
   return {
@@ -380,11 +474,11 @@ export function formularRacionAvanzada({
       conversion: conversion,
       riesgo_acidosis: riesgoMostrado,
       score_acidosis: scoreAcidosis,
-      cumplimiento_energia: +(Math.min(120, cumplimientoENm * 100)).toFixed(0),
-      cumplimiento_proteina: +(Math.min(150, cumplimientoPB * 100)).toFixed(0)
+      cumplimiento_energia: +(Math.min(120, cumplimientoENm * 100)).toFixed(0)
     },
     alertasCalidad: alertasCalidad,
     deficiencias: deficiencias,
+    alertas: alertas,  // nueva propiedad para déficit energético
     explicaciones: explicaciones
   };
 }
