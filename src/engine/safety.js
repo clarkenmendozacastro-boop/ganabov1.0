@@ -462,12 +462,21 @@ export const SISTEMA = {
   FEEDLOT: 'feedlot',
 };
 
+/**
+ * Score de riesgo de acidosis, 0 (seguro) a 100 (peligro).
+ * Heurística compuesta, NO es una norma publicada.
+ *
+ * NOTA DE CALIBRACIÓN: con los pesos de esta versión, una ración
+ * semi-intensiva con peNDF 17 %, almidón 25 %, azúcares 20 % y almidón
+ * desconocido da score ≈ 52 → "alto". Eso es INTENCIONAL.
+ * No bajar los pesos para forzar "moderado".
+ */
 export function scoreAcidosis({
   peNdfPct, almidonPct, forrajePct,
   azucaresPct = 0,
   tieneIonoforo = false,
   fase,
-  sistemaId = SISTEMA.FEEDLOT,
+  sistemaId = 'feedlot',
   almidonDesconocido = false,
 }) {
   let score = 0;
@@ -475,6 +484,69 @@ export function scoreAcidosis({
     peNdf: 0, almidon: 0, azucares: 0, forraje: 0,
     desconocido: 0, ionoforo: 0, fase: 0,
   };
+
+  const minPeNdf =
+    sistemaId === 'feedlot' ? 8
+  : sistemaId === 'semiIntensivo' ? 20
+  : 25;
+
+  const deltaPeNdf = peNdfPct - minPeNdf;
+  if (deltaPeNdf < -8)       componentes.peNdf = 50;
+  else if (deltaPeNdf < -4)  componentes.peNdf = 35;
+  else if (deltaPeNdf < 0)   componentes.peNdf = 20;
+  else if (deltaPeNdf < 3)   componentes.peNdf = 8;
+  score += componentes.peNdf;
+
+  if (almidonPct > 45)       componentes.almidon = 25;
+  else if (almidonPct > 38)  componentes.almidon = 18;
+  else if (almidonPct > 30)  componentes.almidon = 10;
+  else if (almidonPct > 22)  componentes.almidon = 4;
+  score += componentes.almidon;
+
+  if (azucaresPct > 15)      componentes.azucares = 20;
+  else if (azucaresPct > 10) componentes.azucares = 12;
+  else if (azucaresPct > 6)  componentes.azucares = 6;
+  score += componentes.azucares;
+
+  const minForraje =
+    sistemaId === 'feedlot' ? 5
+  : sistemaId === 'semiIntensivo' ? 30
+  : 60;
+
+  const deltaForr = forrajePct - minForraje;
+  if (deltaForr < -15)       componentes.forraje = 20;
+  else if (deltaForr < -8)   componentes.forraje = 12;
+  else if (deltaForr < 0)    componentes.forraje = 5;
+  score += componentes.forraje;
+
+  if (almidonDesconocido) {
+    componentes.desconocido = 8;
+    score += 8;
+  }
+
+  if (tieneIonoforo) {
+    componentes.ionoforo = -10;
+    score -= 10;
+  }
+
+  if (fase === FASE.RECEP) {
+    componentes.fase = 15;
+    score += 15;
+  }
+
+  score = Math.min(Math.max(score, 0), 100);
+
+  let nivel = 'bajo';
+  if (score >= 60) nivel = 'crítico';
+  else if (score >= 40) nivel = 'alto';
+  else if (score >= 20) nivel = 'moderado';
+
+  const riesgoEstructural =
+    peNdfPct < minPeNdf - 2 && (azucaresPct > 8 || almidonPct > 25);
+  if (riesgoEstructural && nivel === 'bajo') nivel = 'moderado';
+
+  return { score, nivel, minPeNdf, minForraje, componentes, riesgoEstructural };
+}
 
   // ---- peNDF: umbral por sistema ----
   const minPeNdf =
