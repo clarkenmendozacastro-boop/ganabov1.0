@@ -262,18 +262,16 @@ export const REGLAS = [
   {
     id: 'V93b',
     campo: 'pPct',
-    // UMBRAL OPERATIVO DEL MOTOR, no un valor oficial BR-CORTE.
-    // El requerimiento fisiológico real de BR-CORTE (cap. 9) para un Nelore
-    // de 350 kg creciendo 1 kg/d ronda 0.19 % MS. Este 0.22 % es un umbral
-    // de formulación con margen de seguridad. El valor final se ajusta por
-    // sistema productivo en limitesVigentes() de constraints.js.
-    min: 0.22,
+    // El valor real se resuelve en pMinVigente(). Aquí min: null para que no
+    // exista una segunda fuente de verdad. Es un umbral operativo del motor,
+    // no una constante BR-CORTE.
+    min: null,
     max: null,
     unidad: '% MS',
     fase: [FASE.CREC, FASE.TERM],
     sev: SEV.WARN,
-    nombre: 'Fósforo — umbral de formulación (confinamiento)',
-    previene: 'Bajo consumo, mal crecimiento, riesgo de pica',
+    nombre: 'Fósforo — umbral de formulación',
+    previene: 'Bajo consumo, mal crecimiento',
     fuente: 'Umbral operativo del motor. Requerimiento fisiológico base: BR-CORTE 2016 cap. 9',
     url: 'https://brcorte.com.br/assets/book2016/en/c9.pdf',
     mensaje: 'Advertencia nutricional: la dieta no alcanza el mínimo de fósforo recomendado para este sistema.',
