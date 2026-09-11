@@ -249,7 +249,12 @@ export const REGLAS = [
     id: 'V93b',
     campo: 'pPct',
     // El valor real se resuelve en pMinVigente(). Aquí min: null para que no
-    // exista una segunda fuente de verdad.
+    // exista una segunda fuente de verdad. La resolución ocurre en dos puntos
+    // del motor que comparten este mismo módulo:
+    //   - limitesVigentes()  (constraints.js)  -> llega al LP
+    //   - evaluarSeguridad() (este archivo)    -> llega al validador
+    // Si falta sistemaId, la regla NO se evalúa y se emite un aviso en
+    // `avisosConfiguracion`: no hay fallback silencioso.
     min: null,
     max: null,
     unidad: '% MS',
@@ -358,13 +363,48 @@ export const HLI_UMBRAL = {
 
 /**
  * Evalúa una dieta contra todas las reglas aplicables.
+ *
+ * @param {object} dieta  indicadores de la dieta (salida de indicadoresDieta)
+ * @param {string} fase   FASE.RECEP | FASE.CREC | FASE.TERM
+ * @param {object} [opts]
+ * @param {string} [opts.sistemaId]  'pastoril' | 'semiIntensivo' | 'feedlot'
+ *
+ * V93b declara `min: null` a propósito para no tener una segunda fuente de
+ * verdad. El valor real sale de pMinVigente({ sistemaId }), que es el único
+ * lugar donde vive el umbral operativo. Si falta sistemaId, V93b NO se evalúa
+ * y se devuelve un aviso en `avisosConfiguracion`. Nunca hay fallback
+ * silencioso ni default inventado.
  */
-export function evaluarSeguridad(dieta, fase) {
+export function evaluarSeguridad(dieta, fase, opts = {}) {
+  const { sistemaId } = opts;
   const bloqueos = [];
   const advertencias = [];
+  const avisosConfiguracion = [];
 
   for (const r of REGLAS) {
     if (!aplica(r, fase)) continue;
+
+    // Resolución del mínimo de V93b. minRegla arranca con el min declarado en
+    // la regla (que para V93b es null) y solo se sobreescribe cuando la regla
+    // lo requiere y hay sistemaId disponible.
+    let minRegla = r.min;
+    if (r.id === 'V93b') {
+      if (!sistemaId) {
+        avisosConfiguracion.push(
+          'V93b (mínimo operativo de fósforo) no se pudo evaluar: falta sistemaId. ' +
+          'Llamar evaluarSeguridad(dieta, fase, { sistemaId }).',
+        );
+        continue;
+      }
+      minRegla = pMinVigente({ sistemaId });
+      if (minRegla === null) {
+        avisosConfiguracion.push(
+          `V93b (mínimo operativo de fósforo) no se pudo evaluar: ` +
+          `sistemaId="${sistemaId}" no tiene umbral definido en pMinVigente().`,
+        );
+        continue;
+      }
+    }
 
     const valor = dieta[r.campo];
     if (valor === null || valor === undefined || !Number.isFinite(Number(valor))) continue;
@@ -376,9 +416,9 @@ export function evaluarSeguridad(dieta, fase) {
 
     let violada = false;
     let detalle = '';
-    if (r.min !== null && r.min !== undefined && v < r.min - tol(r.min)) {
+    if (minRegla !== null && minRegla !== undefined && v < minRegla - tol(minRegla)) {
       violada = true;
-      detalle = `${r.nombre}: ${redondear(v)} ${r.unidad} (mínimo ${r.min})`;
+      detalle = `${r.nombre}: ${redondear(v)} ${r.unidad} (mínimo ${minRegla})`;
     } else if (max !== null && max !== undefined && v > max + tol(max)) {
       violada = true;
       detalle = `${r.nombre}: ${redondear(v)} ${r.unidad} (máximo ${max})`;
@@ -390,7 +430,7 @@ export function evaluarSeguridad(dieta, fase) {
       id: r.id,
       campo: r.campo,
       valor: v,
-      min: r.min,
+      min: minRegla,
       max,
       unidad: r.unidad,
       nombre: r.nombre,
@@ -406,7 +446,7 @@ export function evaluarSeguridad(dieta, fase) {
     else advertencias.push(hallazgo);
   }
 
-  return { bloqueos, advertencias, ok: bloqueos.length === 0 };
+  return { bloqueos, advertencias, ok: bloqueos.length === 0, avisosConfiguracion };
 }
 
 function redondear(v) {
@@ -503,12 +543,22 @@ export function scoreAcidosis({
 }
 
 /**
- * Única fuente de verdad del mínimo de fósforo como % de la MS.
- * Umbral operativo del motor, no valor BR-CORTE publicado.
+ * Única fuente de verdad del mínimo operativo de fósforo como % de la MS.
+ *
+ * Devuelve el umbral del sistema pedido o `null` si el sistema falta o no
+ * tiene umbral definido. NO hay fallback silencioso: el llamador (sea el LP
+ * vía limitesVigentes(), o el validador vía evaluarSeguridad()) debe decidir
+ * qué hacer cuando recibe null — en este motor, registrar un aviso de
+ * configuración y saltarse V93b.
+ *
+ * Valores operativos (no BR-CORTE publicados):
+ *   pastoril       0.18 % MS
+ *   semiIntensivo  0.22 % MS
+ *   feedlot        0.28 % MS
  */
 export function pMinVigente({ sistemaId } = {}) {
   if (sistemaId === 'pastoril')      return 0.18;
   if (sistemaId === 'semiIntensivo') return 0.22;
   if (sistemaId === 'feedlot')       return 0.28;
-  return 0.22;
+  return null;
 }
