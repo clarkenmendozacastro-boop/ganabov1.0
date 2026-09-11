@@ -374,6 +374,9 @@ export function formularRacionAvanzada({
   for (let pasada = 0; pasada < 2; pasada++) {
     const { rows } = construirRestricciones({
       alimentos, dmi, pv: num(pv), fase: faseSeg,
+      // sistemaId es obligatorio para que V93b resuelva su mínimo contra
+      // pMinVigente(). Si no se pasa, la fila WARN de fósforo no se emite.
+      sistemaId,
       emRequerida: emReq.me * dmi,
       pbRequeridaKg, pdrRequeridaKg,
       caRequeridaG: minReq.ca.dietario,
@@ -445,9 +448,13 @@ export function formularRacionAvanzada({
 
   // --- 7. Validación de seguridad de la ración terminada -------------------
   const indicFinal = indicadoresDieta(alimentos, x, num(pv));
+  // sistemaId es obligatorio: sin él, V93b (mínimo operativo de fósforo) no
+  // se puede resolver contra pMinVigente() y evaluarSeguridad devuelve un
+  // aviso en `avisosConfiguracion`, que más abajo se propaga a la pantalla.
   const seguridad = evaluarSeguridad(
     { ...indicFinal, ...contextoExtra(racionItems, indicFinal, monensinaMgKg) },
     faseSeg,
+    { sistemaId },
   );
   const score = scoreAcidosis({
     peNdfPct: indicFinal.peNdfPct,
@@ -459,6 +466,16 @@ export function formularRacionAvanzada({
 
   for (const b of seguridad.bloqueos) alertas.push(`PELIGRO — ${b.nombre}: ${b.mensaje}`);
   for (const w of seguridad.advertencias) alertas.push(`Atención — ${w.nombre}: ${w.mensaje}`);
+  // Avisos de configuración del validador. Hoy el único caso posible es que
+  // V93b no haya podido resolver su mínimo por falta de sistemaId, pero el
+  // canal queda abierto para futuras reglas que dependan de contexto. Sin
+  // este loop el diagnóstico se perdía: ni la pantalla ni el usuario se
+  // enteraban de que una regla no se había evaluado.
+  if (Array.isArray(seguridad.avisosConfiguracion)) {
+    for (const m of seguridad.avisosConfiguracion) {
+      alertas.push(`Configuración — ${m}`);
+    }
+  }
   alertas.push(...pred.avisos);
 
   if (indicFinal.almidonCiegoPct > 10) {
@@ -586,6 +603,11 @@ export function formularRacionAvanzada({
     adaptacion: rampa,
     prediccion: pred,
     animal,
+    // Canal explícito para que la pantalla vea, sin bucear en `seguridad`,
+    // qué reglas no pudieron evaluarse por falta de contexto. Hoy el único
+    // caso posible es V93b sin sistemaId; el array viene siempre presente
+    // (vacío si todo se evaluó bien).
+    avisosConfiguracion: seguridad.avisosConfiguracion || [],
   };
 }
 
