@@ -53,6 +53,19 @@ import { MCP_BRCORTE, DIG_MCP, DIG_RUP } from './standards.js';
  * RUP = CPI - RDP
  * MPI = MCP*0.64 + RUP/0.80
  *
+ * FIX CRÍTICO (por qué el motor daba 0.74 kg/d cuando debería dar 1.02):
+ *   El código anterior usaba `rupKg !== null ? rupKg * 1000 : (cpiG - rdp)`,
+ *   es decir: si los alimentos declaraban ALGÚN RUP (aunque fuera incompleto
+ *   por tablas con `rup_pct_pb: null`), el motor tomaba ese valor y descartaba
+ *   el cálculo por balance de masa. Resultado: alimentos sin `rup_pct_pb`
+ *   aportaban 0 RUP, el total quedaba muy por debajo del real, MPI caía, y
+ *   el motor elegía "proteína" como limitante cuando en realidad era energía.
+ *
+ *   La regla física correcta: RUP = CPI − RDP por balance de masa. Si los
+ *   alimentos declaran MENOS RUP que el que se infiere por diferencia, los
+ *   datos están incompletos y hay que usar el de balance de masa. Si declaran
+ *   MÁS, la tabla manda. Se toma el MAYOR de los dos.
+ *
  * @param {number} cpiKg   consumo de proteína bruta, kg/d
  * @param {number} tdniKg  consumo de TDN, kg/d
  * @param {number} rupKg   consumo de PNDR medido en los alimentos, kg/d (opcional)
@@ -66,8 +79,14 @@ export function mpAportada(cpiKg, tdniKg, rupKg = null) {
   const cpiG = cpiKg * 1000;
   const rdp = Math.min(mcp, cpiG * 0.95);
 
-  // RUP: se prefiere el valor sumado de los alimentos; si no, el residuo.
-  const rupG = rupKg !== null ? rupKg * 1000 : Math.max(cpiG - rdp, 0);
+  // RUP por diferencia: SIEMPRE disponible por balance de masa.
+  const rupPorDiferencia = Math.max(cpiG - rdp, 0);
+
+  // RUP declarado por los alimentos (puede estar subestimado si faltan datos).
+  const rupDeclaradoG = rupKg !== null ? rupKg * 1000 : 0;
+
+  // FIX: usar el MAYOR de los dos.
+  const rupG = Math.max(rupDeclaradoG, rupPorDiferencia);
 
   const mpi = rdp * DIG_MCP + rupG * DIG_RUP;
 
@@ -76,6 +95,9 @@ export function mpAportada(cpiKg, tdniKg, rupKg = null) {
     mcp: rdp,
     rup: rupG,
     rdp,
+    rupDeclarado: rupDeclaradoG,
+    rupPorDiferencia,
+    fuenteRup: rupDeclaradoG > rupPorDiferencia ? 'declarado' : 'por_diferencia',
     // Si la PB de la dieta no alcanza para sostener la síntesis microbiana que
     // permitiría la energía, la fibra se digiere peor: es el primer nutriente
     // limitante en forrajes tropicales de baja calidad.
