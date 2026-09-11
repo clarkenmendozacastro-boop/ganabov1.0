@@ -1,7 +1,7 @@
 // src/utils/nutricion.js
 // ============================================================
 // GANABOV ENGINE PRO - MOTOR NUTRICIONAL AVANZADO
-// VERSIÓN DEFINITIVA: incluye todas las correcciones discutidas
+// VERSIÓN CORREGIDA: peNDF parcial, MS completa, mensajes coherentes
 // ============================================================
 
 export const FASES_FEEDLOT = {
@@ -67,16 +67,14 @@ const getForrajeMinAjustado = (pv, sistema, fase) => {
   return base;
 };
 
-// Valores por defecto de Ca y P si el alimento no los tiene
 const getCaP = (al) => {
   const ca = al.ca !== undefined ? al.ca : (al.categoria === "forraje" ? 0.3 : 0.1);
   const p = al.p !== undefined ? al.p : (al.categoria === "forraje" ? 0.2 : 0.3);
   return { ca, p };
 };
 
-// Ajuste por temperatura: reduce consumo de MS si hace mucho calor
 const getAjusteTemperatura = (temperatura) => {
-  const t = temperatura !== undefined ? temperatura : 28; // por defecto Santa Cruz
+  const t = temperatura !== undefined ? temperatura : 28;
   if (t > 38) return 0.80;
   if (t > 35) return 0.85;
   if (t > 32) return 0.90;
@@ -130,9 +128,8 @@ export function formularRacionAvanzada({
   } else {
     cmsBase = pvN * (sistema.cms_pct / 100) * razaParam.consumo;
   }
-  // Ajuste por temperatura ambiente (importante en Santa Cruz)
   cmsBase *= getAjusteTemperatura(temperatura);
-  
+
   if (sistemaId === "feedlot" && fase) {
     if (fase === "inicio") cmsBase *= 0.92;
     else if (fase === "terminacion") cmsBase *= 1.05;
@@ -248,6 +245,7 @@ export function formularRacionAvanzada({
 
   const forrajeMinDinamico = getForrajeMinAjustado(pvN, sistema, fase);
   const peNDF_min_seguro = sistemaId === "pastoril" ? 22 : (fase && FASES_FEEDLOT[fase] ? FASES_FEEDLOT[fase].peNDF_min : 22);
+  const peNDF_min_dec = peNDF_min_seguro / 100;
 
   // ========== 1. FORRAJE ==========
   if (!esPastorilAuto && forrajes.length > 0) {
@@ -272,10 +270,10 @@ export function formularRacionAvanzada({
     agregar(salIdeal, pvN * 0.0004);
   }
 
-  // ========== 3. ITERACIÓN ENERGÍA + PROTEÍNA ==========
+  // ========== 3. ITERACIÓN CORREGIDA CON peNDF PARCIAL ==========
   let msDisponibleConcentrado = Math.max(0, cmsBase - ms_acum);
   let iteraciones = 0;
-  const MAX_ITERACIONES = 10;
+  const MAX_ITERACIONES = 20;
 
   while (iteraciones < MAX_ITERACIONES) {
     iteraciones++;
@@ -283,8 +281,8 @@ export function formularRacionAvanzada({
     const deficitPB = Math.max(0, PB_total - pb_acum);
 
     if (deficitENm < 0.2 && deficitPB < 20) break;
-
-    if (msDisponibleConcentrado < 0.1) {
+    if (msDisponibleConcentrado < 0.05) {
+      // Intentar reducir forraje para hacer espacio (solo en automático)
       if (esAutomatico && forrajes.length > 0) {
         const forrajeItem = racion.find(r => r.categoria === "forraje");
         if (forrajeItem && forrajeItem.ms_kg > 0.5) {
@@ -301,14 +299,18 @@ export function formularRacionAvanzada({
             enm_acum -= reduccionMS * alForraje.enm;
             pb_acum -= reduccionMS * (alForraje.prot / 100) * 1000;
             peNDF_acum -= reduccionMS * (alForraje.peNDF / 100);
+            ca_acum -= reduccionMS * alForraje.ca / 100;
+            p_acum -= reduccionMS * alForraje.p / 100;
             msDisponibleConcentrado = Math.max(0, cmsBase - ms_acum);
           }
         }
       }
-      if (msDisponibleConcentrado < 0.1) break;
+      if (msDisponibleConcentrado < 0.05) break;
     }
 
-    // A) ENERGÍA
+    let hizoCambio = false;
+
+    // *** A) ENERGÍA CON peNDF PARCIAL ***
     if (deficitENm > 0.2 && energeticos.length > 0) {
       const candidatos = energeticos.filter(e => {
         const itemActual = racion.find(r => r.id === e.id);
@@ -323,28 +325,46 @@ export function formularRacionAvanzada({
       if (candidatos.length > 0) {
         const mejorE = candidatos[0];
         let msNecesaria = deficitENm / mejorE.enm;
-        msNecesaria = Math.min(msNecesaria, msDisponibleConcentrado);
+
+        // Limitar por max_ms_pct
         if (mejorE.max_ms_pct) {
           const itemActual = racion.find(r => r.id === mejorE.id);
           const msActual = itemActual ? itemActual.ms_kg : 0;
           const maxMs = cmsBase * (mejorE.max_ms_pct / 100);
           msNecesaria = Math.min(msNecesaria, maxMs - msActual);
         }
-        msNecesaria = Math.max(msNecesaria, 0.3);
-        if (msNecesaria > 0.1 && msDisponibleConcentrado >= msNecesaria) {
-          const nuevoMs = ms_acum + msNecesaria;
-          const nuevoPeNDF = peNDF_acum + msNecesaria * (mejorE.peNDF / 100);
-          const nuevoPeNDF_pct = nuevoMs > 0 ? (nuevoPeNDF / nuevoMs) * 100 : 0;
-          if (nuevoPeNDF_pct >= peNDF_min_seguro || !esAutomatico) {
-            agregar(mejorE, msNecesaria / (mejorE.ms / 100));
-            msDisponibleConcentrado -= msNecesaria;
-            continue;
+
+        // Limitar por espacio disponible
+        msNecesaria = Math.min(msNecesaria, msDisponibleConcentrado);
+
+        // *** CÁLCULO DE MÁXIMO SIN BAJAR peNDF ***
+        const peNDF_alimento_dec = mejorE.peNDF / 100;
+        if (peNDF_alimento_dec < peNDF_min_dec) {
+          const numerador = peNDF_acum - peNDF_min_dec * ms_acum;
+          const denominador = peNDF_min_dec - peNDF_alimento_dec;
+          if (denominador > 0) {
+            const msMaximaSinBajarPeNDF = Math.max(0, numerador / denominador);
+            msNecesaria = Math.min(msNecesaria, msMaximaSinBajarPeNDF);
           }
+        }
+
+        // Mínimo práctico: 0.2 kg MS
+        if (msNecesaria >= 0.2) {
+          agregar(mejorE, msNecesaria / (mejorE.ms / 100));
+          msDisponibleConcentrado -= msNecesaria;
+          hizoCambio = true;
+          continue;
+        } else if (msNecesaria >= 0.05) {
+          // Aceptamos cantidades pequeñas si son significativas (evita el "no añadir nada")
+          agregar(mejorE, msNecesaria / (mejorE.ms / 100));
+          msDisponibleConcentrado -= msNecesaria;
+          hizoCambio = true;
+          continue;
         }
       }
     }
 
-    // B) PROTEÍNA
+    // *** B) PROTEÍNA CON peNDF PARCIAL ***
     if (deficitPB > 20 && proteicos.length > 0) {
       const candidatos = proteicos.filter(p => {
         const itemActual = racion.find(r => r.id === p.id);
@@ -359,40 +379,57 @@ export function formularRacionAvanzada({
       if (candidatos.length > 0) {
         const mejorP = candidatos[0];
         let msNecesaria = (deficitPB / 1000) / (mejorP.prot / 100);
-        msNecesaria = Math.min(msNecesaria, msDisponibleConcentrado);
+
         if (mejorP.max_ms_pct) {
           const itemActual = racion.find(r => r.id === mejorP.id);
           const msActual = itemActual ? itemActual.ms_kg : 0;
           const maxMs = cmsBase * (mejorP.max_ms_pct / 100);
           msNecesaria = Math.min(msNecesaria, maxMs - msActual);
         }
-        msNecesaria = Math.max(msNecesaria, 0.15);
-        if (msNecesaria > 0.1 && msDisponibleConcentrado >= msNecesaria) {
+
+        msNecesaria = Math.min(msNecesaria, msDisponibleConcentrado);
+
+        // Aplicar límite peNDF
+        const peNDF_alimento_dec = mejorP.peNDF / 100;
+        if (peNDF_alimento_dec < peNDF_min_dec) {
+          const numerador = peNDF_acum - peNDF_min_dec * ms_acum;
+          const denominador = peNDF_min_dec - peNDF_alimento_dec;
+          if (denominador > 0) {
+            const msMaximaSinBajarPeNDF = Math.max(0, numerador / denominador);
+            msNecesaria = Math.min(msNecesaria, msMaximaSinBajarPeNDF);
+          }
+        }
+
+        if (msNecesaria >= 0.1) {
           agregar(mejorP, msNecesaria / (mejorP.ms / 100));
           msDisponibleConcentrado -= msNecesaria;
+          hizoCambio = true;
           continue;
         }
       }
     }
-    break;
+
+    if (!hizoCambio) break;
   }
 
-  // ========== 4. FUENTE PROTEICA OBLIGATORIA SI PB < 90% ==========
-  const pbActualTemp = pb_acum;
-  if (pbActualTemp < PB_total * 0.9 && msDisponibleConcentrado > 0.1 && proteicos.length > 0) {
-    // Buscar proteico de calidad (soya > tortas > harinas animales)
-    const mejorP = proteicos[0];
-    let msNecesaria = Math.max(0.15, (PB_total * 0.95 - pbActualTemp) / 1000 / (mejorP.prot / 100));
-    msNecesaria = Math.min(msNecesaria, msDisponibleConcentrado);
-    if (mejorP.max_ms_pct) {
-      const itemActual = racion.find(r => r.id === mejorP.id);
-      const msActual = itemActual ? itemActual.ms_kg : 0;
-      const maxMs = cmsBase * (mejorP.max_ms_pct / 100);
-      msNecesaria = Math.min(msNecesaria, maxMs - msActual);
-    }
-    if (msNecesaria > 0.1) {
-      agregar(mejorP, msNecesaria / (mejorP.ms / 100));
-      msDisponibleConcentrado -= msNecesaria;
+  // ========== 4. LLENAR MS RESTANTE CON ENERGÉTICO (si aún queda espacio) ==========
+  // Si todavía hay déficit energético pero el peNDF está justo en el mínimo,
+  // intentamos llenar el espacio restante con energético hasta el límite del peNDF mínimo
+  const deficitENmFinal = Math.max(0, ENm_total - enm_acum);
+  if (deficitENmFinal > 0.3 && msDisponibleConcentrado > 0.3 && energeticos.length > 0) {
+    const mejorE = energeticos[0];
+    const peNDF_alimento_dec = mejorE.peNDF / 100;
+    if (peNDF_alimento_dec < peNDF_min_dec) {
+      const numerador = peNDF_acum - peNDF_min_dec * ms_acum;
+      const denominador = peNDF_min_dec - peNDF_alimento_dec;
+      if (denominador > 0) {
+        const msMaximaSinBajarPeNDF = Math.max(0, numerador / denominador);
+        const msAñadir = Math.min(msDisponibleConcentrado, msMaximaSinBajarPeNDF, 0.5);
+        if (msAñadir >= 0.2) {
+          agregar(mejorE, msAñadir / (mejorE.ms / 100));
+          msDisponibleConcentrado -= msAñadir;
+        }
+      }
     }
   }
 
@@ -493,7 +530,7 @@ export function formularRacionAvanzada({
   const costoDiario = racion.reduce((s, r) => s + r.precio_total, 0);
   const conversion = gdpEstimada > 0 ? (ms_acum / gdpEstimada).toFixed(1) : "N/A";
 
-  // ========== 11. ALERTAS Y EXPLICACIONES ==========
+  // ========== 11. ALERTAS Y EXPLICACIONES COHERENTES ==========
   let alertas = [];
   let explicaciones = [];
 
@@ -501,17 +538,34 @@ export function formularRacionAvanzada({
   const deficitPBPorc = (1 - cumplimientoPB) * 100;
 
   if (esAutomatico) {
-    if (deficitENmPorc > 15) {
-      alertas.push(`⚠️ Déficit energético severo (${deficitENmPorc.toFixed(0)}%). Considere revisar la base de alimentos o el sistema.`);
+    // Solo decir "balanceada" si realmente lo está
+    const estaBalanceada = (cumplimientoENm >= 0.95 && cumplimientoPB >= 0.90 && cumplimientoPB <= 1.30);
+    
+    if (estaBalanceada) {
+      explicaciones.push("✅ Ración balanceada según NRC. Cubre los requerimientos de energía y proteína.");
+    } else {
+      if (deficitENmPorc > 5) {
+        alertas.push(`⚠️ Déficit energético (${deficitENmPorc.toFixed(0)}%). El animal podría no alcanzar el GDP proyectado.`);
+      }
+      if (deficitENmPorc > 15) {
+        alertas.push(`🚨 Déficit energético severo (${deficitENmPorc.toFixed(0)}%). Revise la base de alimentos o el sistema.`);
+      }
+      if (deficitPBPorc > 5) {
+        alertas.push(`⚠️ Déficit proteico (${deficitPBPorc.toFixed(0)}%).`);
+      }
+      if (cumplimientoPB > 1.30) {
+        alertas.push(`⚠️ Exceso de proteína (${(cumplimientoPB * 100).toFixed(0)}% del requerimiento).`);
+      }
+      if (deficitENmPorc <= 5 && deficitPBPorc <= 5 && cumplimientoPB <= 1.30) {
+        explicaciones.push("✅ Ración balanceada según NRC.");
+      }
     }
-    if (cumplimientoPB > 1.3) {
-      alertas.push(`⚠️ Exceso de proteína (${(cumplimientoPB * 100).toFixed(0)}% del requerimiento). Se puede optimizar costos.`);
+    
+    if (peNDF_pct > 30) {
+      explicaciones.push("Se priorizaron forrajes de buena calidad y fibra efectiva.");
     }
-    if (peNDF_pct > 30) explicaciones.push("Se priorizaron forrajes de buena calidad y fibra efectiva.");
     if (esPastorilAuto) {
       explicaciones.push("🌾 Sistema pastoril: suplemento formulado para complementar el pastoreo.");
-    } else {
-      explicaciones.push("✅ Ración balanceada según NRC. Se priorizó cobertura energética y de proteína.");
     }
   } else {
     if (deficitENmPorc > 5) alertas.push(`⚠️ Déficit energético (${deficitENmPorc.toFixed(0)}%). Agregue más energéticos.`);
@@ -544,8 +598,10 @@ export function formularRacionAvanzada({
       enm_requerida: +ENm_total.toFixed(2),
       pb_aportada: +pb_acum.toFixed(0),
       pb_requerida: +PB_total.toFixed(0),
-      ca_total: +ca_acum.toFixed(2),
-      p_total: +p_acum.toFixed(2),
+      ca_total_g: +(ca_acum * 1000).toFixed(0),
+      p_total_g: +(p_acum * 1000).toFixed(0),
+      ca_pct_ms: ms_acum > 0 ? +((ca_acum / ms_acum) * 100).toFixed(3) : 0,
+      p_pct_ms: ms_acum > 0 ? +((p_acum / ms_acum) * 100).toFixed(3) : 0,
       ratio_ca_p: p_acum > 0 ? +(ca_acum / p_acum).toFixed(2) : null,
       costo_dia: +costoDiario.toFixed(2),
       conversion: conversion,
