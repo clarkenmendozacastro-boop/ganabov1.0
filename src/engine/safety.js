@@ -548,3 +548,19 @@ export function scoreAcidosis({
 
   return { score, nivel, minPeNdf, minForraje, componentes, riesgoEstructural };
 }
+/**
+ * Única fuente de verdad del mínimo de fósforo como % de la MS.
+ *
+ * NO es un valor BR-CORTE publicado. Es un umbral operativo del motor, con
+ * ~15 % de margen sobre el requerimiento fisiológico calculado en animal.js.
+ * Se ajusta por sistema productivo porque la presión de producción es distinta.
+ *
+ * Tanto el solver (vía limitesVigentes en constraints.js) como la UI deben
+ * llamar a esta función. No duplicar el número en ningún otro lado.
+ */
+export function pMinVigente({ sistemaId } = {}) {
+  if (sistemaId === 'pastoril')      return 0.18;
+  if (sistemaId === 'semiIntensivo') return 0.22;
+  if (sistemaId === 'feedlot')       return 0.28;
+  return 0.22;
+}
