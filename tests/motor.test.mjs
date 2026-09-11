@@ -18,7 +18,7 @@
 import { perfilAnimal, nemRequerido, negRequerido, mineralesRequeridos } from '../src/engine/animal.js';
 import { deDesdeTdn, meDesdeDe, nemDieta, negDieta, tdnWeiss, corregirTdnEstimado } from '../src/engine/energy.js';
 import { dmiBrCorte, dmiNrc } from '../src/engine/intake.js';
-import { evaluarSeguridad, pMinVigente } from '../src/engine/safety.js';
+import { evaluarSeguridad, pMinVigente, scoreAcidosis } from '../src/engine/safety.js';
 import { construirRestricciones } from '../src/engine/constraints.js';
 import { rampaAdaptacion, validarRampa } from '../src/engine/adaptation.js';
 import { formularRacionAvanzada } from '../src/engine/index.js';
@@ -401,8 +401,6 @@ if (corridas.length === 4) {
   ok('Todos los consumos MS en rango fisiológico (1.2–3 % PV)',
      corridas.every((x) => x.r.indicadores.ms_pct_pv > 1.2 && x.r.indicadores.ms_pct_pv < 3.0));
 
-  // Tendencia global: el P de mantenimiento crece lineal con el peso, así que
-  // el P total a 550 debe superar al de 250 aunque no crezca en cada paso.
   ok('El P requerido a 550 es mayor que a 250',
      corridas[3].r.indicadores.p_requerida_g > corridas[0].r.indicadores.p_requerida_g);
   ok('El Ca requerido a 550 es mayor que a 250',
@@ -412,7 +410,6 @@ if (corridas.length === 4) {
   ok('Las cuatro GDP no son idénticas', new Set(gdps).size > 1,
      `gdps: ${gdps.join(', ')}`);
 
-  // Caso principal: Nelore 350 kg semiIntensivo
   const principal = corridas.find((x) => x.pv === 350);
   const r350 = principal.r;
 
@@ -439,10 +436,6 @@ if (corridas.length === 4) {
 console.log('\n11. Unidades de fósforo (% de la MS, no fracción ni g/kg)');
 // ---------------------------------------------------------------------------
 
-// pPct se reconstruye desde p_total_g (gramos) y ms_total_kg (kg):
-//   pPct (% MS) = p_total_g / (ms_total_kg * 1000) * 100 = p_total_g / ms_total_kg / 10
-// Si la unidad fuera fracción (0–1) el resultado no coincidiría con un umbral
-// de 0.18–0.28. Si fuera g/kg sería 10× más grande.
 {
   const r = formularRacionAvanzada({ pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28 });
   if (!r.error) {
@@ -458,7 +451,6 @@ console.log('\n11. Unidades de fósforo (% de la MS, no fracción ni g/kg)');
   }
 }
 
-// La propiedad `a.p` de la base es un porcentaje de MS (0–100), no una fracción.
 {
   const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
   const maiz = ALIMENTOS_BASE.find((a) => a.id === 'maiz_amarillo');
@@ -468,6 +460,166 @@ console.log('\n11. Unidades de fósforo (% de la MS, no fracción ni g/kg)');
   const fosfato = ALIMENTOS_BASE.find((a) => a.id === 'fosfato_bicalcico');
   ok(`fosfato_bicalcico.p = ${fosfato?.p} está en % (no en fracción)`,
      fosfato && fosfato.p > 5 && fosfato.p < 30);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n12. score_detalle: sistemaId llega a scoreAcidosis()');
+// ---------------------------------------------------------------------------
+
+// Umbrales esperados por sistema (definidos en safety.js, no se tocan acá).
+// Sirven como referencia para verificar que sistemaId viaja del formulador
+// hasta scoreAcidosis().
+const UMBRALES_SISTEMA = {
+  feedlot:       { minPeNdf: 8,  minForraje: 5  },
+  semiIntensivo: { minPeNdf: 20, minForraje: 30 },
+  pastoril:      { minPeNdf: 25, minForraje: 60 },
+};
+
+// --- 12a. Unidad: scoreAcidosis() con sistemaId explícito ------------------
+// Misma composición, tres sistemas. Solo debe cambiar lo que depende del
+// sistema (minPeNdf, minForraje y, eventualmente, el score).
+{
+  const composicion = { peNdfPct: 17, almidonPct: 35, forrajePct: 25, tieneIonoforo: false, fase: 'TERM' };
+  const porSistema = {};
+  for (const sid of ['feedlot', 'semiIntensivo', 'pastoril']) {
+    porSistema[sid] = scoreAcidosis({ ...composicion, sistemaId: sid });
+  }
+
+  for (const [sid, esperado] of Object.entries(UMBRALES_SISTEMA)) {
+    const s = porSistema[sid];
+    ok(`scoreAcidosis(${sid}).minPeNdf === ${esperado.minPeNdf}`, s.minPeNdf === esperado.minPeNdf,
+       `obtenido ${s.minPeNdf}`);
+    ok(`scoreAcidosis(${sid}).minForraje === ${esperado.minForraje}`, s.minForraje === esperado.minForraje,
+       `obtenido ${s.minForraje}`);
+    ok(`scoreAcidosis(${sid}) devuelve número y nivel válidos`,
+       typeof s.score === 'number' && typeof s.nivel === 'string');
+    ok(`scoreAcidosis(${sid}) devuelve componentes completos`,
+       s.componentes && typeof s.componentes.peNdf === 'number' &&
+       typeof s.componentes.almidon === 'number' &&
+       typeof s.componentes.forraje === 'number' &&
+       typeof s.componentes.ionoforo === 'number' &&
+       typeof s.componentes.fase === 'number');
+  }
+
+  // El score NO se puede garantizar estrictamente creciente entre sistemas,
+  // pero los umbrales sí deben ser distintos (prueba de que sistemaId llega).
+  const setMinPeNdf = new Set(Object.values(porSistema).map((s) => s.minPeNdf));
+  ok('Los minPeNdf de los tres sistemas son distintos entre sí', setMinPeNdf.size === 3,
+     `valores: ${[...setMinPeNdf].join(', ')}`);
+  const setMinForraje = new Set(Object.values(porSistema).map((s) => s.minForraje));
+  ok('Los minForraje de los tres sistemas son distintos entre sí', setMinForraje.size === 3,
+     `valores: ${[...setMinForraje].join(', ')}`);
+}
+
+// --- 12b. Integración: formularRacionAvanzada expone score_detalle ---------
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (r.error) {
+    ok('integración: formula sin error', false, r.error);
+  } else {
+    const sd = r.score_detalle;
+    ok('integración: score_detalle existe en el return', sd && typeof sd === 'object');
+    ok('integración: score_detalle.score es número',
+       sd && typeof sd.score === 'number');
+    ok('integración: score_detalle.nivel es string',
+       sd && typeof sd.nivel === 'string');
+    ok('integración: score_detalle.minPeNdf es número',
+       sd && typeof sd.minPeNdf === 'number');
+    ok('integración: score_detalle.minForraje es número',
+       sd && typeof sd.minForraje === 'number');
+    ok('integración: score_detalle.componentes es objeto',
+       sd && sd.componentes && typeof sd.componentes === 'object');
+    ok('integración: score_detalle.riesgoEstructural existe',
+       sd && typeof sd.riesgoEstructural === 'boolean');
+  }
+}
+
+// --- 12c. Integración: en semiIntensivo NO se usan umbrales de feedlot -----
+// Este es el corazón del fix. Si sistemaId no llegara, minPeNdf sería 8 y
+// minForraje sería 5 (defaults de scoreAcidosis). Debe ser 20 y 30.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('semiIntensivo: minPeNdf === 20 (no 8 de feedlot)',
+       r.score_detalle.minPeNdf === 20, `obtenido ${r.score_detalle.minPeNdf}`);
+    ok('semiIntensivo: minForraje === 30 (no 5 de feedlot)',
+       r.score_detalle.minForraje === 30, `obtenido ${r.score_detalle.minForraje}`);
+  }
+}
+
+// --- 12d. Integración: consistencia entre score_detalle e indicadores ------
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('consistencia: score_detalle.score === indicadores.score_acidosis',
+       r.score_detalle.score === r.indicadores.score_acidosis,
+       `score_detalle=${r.score_detalle.score}, indicadores=${r.indicadores.score_acidosis}`);
+    ok('consistencia: score_detalle.nivel === indicadores.riesgo_acidosis',
+       r.score_detalle.nivel === r.indicadores.riesgo_acidosis,
+       `score_detalle=${r.score_detalle.nivel}, indicadores=${r.indicadores.riesgo_acidosis}`);
+  }
+}
+
+// --- 12e. Los tres sistemas: minPeNdf y minForraje correctos --------------
+{
+  for (const [sid, esperado] of Object.entries(UMBRALES_SISTEMA)) {
+    const r = formularRacionAvanzada({
+      pv: 350, sistemaId: sid, razaId: 'nelore', temperatura: 28,
+    });
+    if (r.error) {
+      ok(`integración ${sid}: formula sin error`, false, r.error);
+      continue;
+    }
+    ok(`integración ${sid}: minPeNdf === ${esperado.minPeNdf} (obtenido ${r.score_detalle.minPeNdf})`,
+       r.score_detalle.minPeNdf === esperado.minPeNdf);
+    ok(`integración ${sid}: minForraje === ${esperado.minForraje} (obtenido ${r.score_detalle.minForraje})`,
+       r.score_detalle.minForraje === esperado.minForraje);
+    ok(`integración ${sid}: score_detalle.score === indicadores.score_acidosis`,
+       r.score_detalle.score === r.indicadores.score_acidosis);
+    ok(`integración ${sid}: score_detalle.nivel === indicadores.riesgo_acidosis`,
+       r.score_detalle.nivel === r.indicadores.riesgo_acidosis);
+  }
+}
+
+// --- 12f. Reproducibilidad: mismos inputs → mismos outputs ----------------
+{
+  const params = { pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28 };
+  const a = formularRacionAvanzada(params);
+  const b = formularRacionAvanzada(params);
+  if (!a.error && !b.error) {
+    ok('reproducibilidad: score_detalle.score idéntico en dos corridas',
+       a.score_detalle.score === b.score_detalle.score);
+    ok('reproducibilidad: score_detalle.nivel idéntico en dos corridas',
+       a.score_detalle.nivel === b.score_detalle.nivel);
+    ok('reproducibilidad: componentes idénticos en dos corridas',
+       JSON.stringify(a.score_detalle.componentes) === JSON.stringify(b.score_detalle.componentes));
+    ok('reproducibilidad: indicadores.score_acidosis idéntico',
+       a.indicadores.score_acidosis === b.indicadores.score_acidosis);
+  }
+}
+
+// --- 12g. azucaresPct queda en 0 (documentado como TODO) ------------------
+// El componente de azúcares siempre evalúa 0 hoy, porque indicadoresDieta()
+// no expone azucaresPct. Verificamos que score_detalle.componentes.azucares
+// sea 0 en los tres sistemas, para que quede registrado en las pruebas y no
+// se olvide cuando se agregue el dato real.
+{
+  for (const sid of ['feedlot', 'semiIntensivo', 'pastoril']) {
+    const r = formularRacionAvanzada({
+      pv: 350, sistemaId: sid, razaId: 'nelore', temperatura: 28,
+    });
+    if (!r.error) {
+      ok(`${sid}: componentes.azucares === 0 (TODO pendiente: agregar azucaresPct real)`,
+         r.score_detalle.componentes.azucares === 0,
+         `obtenido ${r.score_detalle.componentes.azucares}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

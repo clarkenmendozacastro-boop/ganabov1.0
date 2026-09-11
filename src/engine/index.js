@@ -460,8 +460,17 @@ export function formularRacionAvanzada({
     peNdfPct: indicFinal.peNdfPct,
     almidonPct: indicFinal.almidonPct,
     forrajePct: indicFinal.forrajePct,
+    // TODO: agregar azucaresPct real a indicadoresDieta(); mientras tanto
+    // queda en 0 y el score NO se debe presentar como completo: el
+    // componente de azúcares siempre evalúa a 0 hoy.
+    azucaresPct: indicFinal.azucaresPct ?? 0,
     tieneIonoforo,
     fase: faseSeg,
+    // sistemaId es el fix principal: sin él, scoreAcidosis() caía por
+    // default en 'feedlot' y usaba minPeNdf=8 / minForraje=5 incluso en
+    // semiIntensivo y pastoril, subestimando el riesgo de acidosis.
+    sistemaId,
+    almidonDesconocido: (indicFinal.almidonCiegoPct ?? 0) > 10,
   });
 
   for (const b of seguridad.bloqueos) alertas.push(`PELIGRO — ${b.nombre}: ${b.mensaje}`);
@@ -608,6 +617,11 @@ export function formularRacionAvanzada({
     // caso posible es V93b sin sistemaId; el array viene siempre presente
     // (vacío si todo se evaluó bien).
     avisosConfiguracion: seguridad.avisosConfiguracion || [],
+    // Detalle completo del score de acidosis: número, nivel, los dos umbrales
+    // que dependen del sistema (minPeNdf, minForraje) y los componentes.
+    // Se expone tal cual lo devuelve scoreAcidosis(), sin redondear, para que
+    // los tests puedan verificar que sistemaId llegó bien.
+    score_detalle: score,
   };
 }
 
