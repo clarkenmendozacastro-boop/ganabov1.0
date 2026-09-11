@@ -2,18 +2,6 @@
 // ============================================================================
 // GANABOV — MOTOR NUTRICIONAL v2
 // LÍMITES DE SEGURIDAD. Este módulo existe para que la app no enferme animales.
-//
-// Cada regla es un dato, no código suelto: tiene mínimo, máximo, unidad, fase,
-// severidad, el trastorno que previene y la FUENTE. Así se pueden auditar y
-// corregir sin tocar la lógica.
-//
-// Severidad:
-//   BLOCK -> la ración no se entrega así. El balanceador la trata como
-//            restricción dura y, si no la puede cumplir, avisa qué falta en vez
-//            de entregar una dieta peligrosa.
-//   WARN  -> se entrega con advertencia visible al usuario.
-//
-// Documento de respaldo con las 110 reglas y sus fuentes: research/seguridad.md
 // ============================================================================
 
 export const FASE = { RECEP: 'RECEP', CREC: 'CREC', TERM: 'TERM', TODAS: 'TODAS' };
@@ -27,7 +15,7 @@ export function faseSeguridad(sistemaId, faseFeedlot) {
     return FASE.CREC;
   }
   if (sistemaId === 'semiIntensivo') return FASE.CREC;
-  return FASE.CREC; // pastoril: dieta de forraje, se evalúa como crecimiento
+  return FASE.CREC;
 }
 
 function aplica(regla, fase) {
@@ -37,7 +25,6 @@ function aplica(regla, fase) {
 
 // ---------------------------------------------------------------------------
 // REGLAS
-// `campo` es la clave del objeto `dieta` que se evalúa (ver evaluarSeguridad).
 // ---------------------------------------------------------------------------
 
 export const REGLAS = [
@@ -110,7 +97,6 @@ export const REGLAS = [
     fase: FASE.TODAS, sev: SEV.WARN,
     nombre: 'Almidón acoplado a la fibra de forraje', previene: 'SARA',
     fuente: 'NASEM', url: 'https://www.ncbi.nlm.nih.gov/books/NBK600592/',
-    // Regla NASEM: el techo de almidón depende de la FDN de forraje.
     maxDinamico: (d) => {
       const f = d.fndfPct ?? 0;
       if (f >= 19) return 30;
@@ -263,8 +249,7 @@ export const REGLAS = [
     id: 'V93b',
     campo: 'pPct',
     // El valor real se resuelve en pMinVigente(). Aquí min: null para que no
-    // exista una segunda fuente de verdad. Es un umbral operativo del motor,
-    // no una constante BR-CORTE.
+    // exista una segunda fuente de verdad.
     min: null,
     max: null,
     unidad: '% MS',
@@ -364,9 +349,6 @@ export const REGLAS = [
   },
 ];
 
-/** Umbral de carga calórica (HLI) por genotipo. El cebú aguanta 10 puntos más
- *  que el taurino: Nelore y Brahman 96 vs 86 en Bos taurus.
- *  https://futurebeef.com.au/wp-content/uploads/Heat-load-in-feedlot-cattle.pdf */
 export const HLI_UMBRAL = {
   zebu: 96,
   cruza_carne: 93,
@@ -376,12 +358,6 @@ export const HLI_UMBRAL = {
 
 /**
  * Evalúa una dieta contra todas las reglas aplicables.
- *
- * @param {object} dieta   objeto plano con las claves que usan las reglas
- *                         (peNdfPct, ndfPct, forrajePct, almidonPct, eePct,
- *                          sPct, caPct, pPct, ratioCaP, ureaPct, ...)
- * @param {string} fase    FASE.RECEP | CREC | TERM
- * @returns {{bloqueos:Array, advertencias:Array, ok:boolean}}
  */
 export function evaluarSeguridad(dieta, fase) {
   const bloqueos = [];
@@ -396,11 +372,6 @@ export function evaluarSeguridad(dieta, fase) {
 
     const max = r.max === 'dinamico' && r.maxDinamico ? r.maxDinamico(dieta) : r.max;
 
-    // Tolerancia numérica. Sin esto una relación Ca:P que vale exactamente 1,2
-    // se guarda en la computadora como 1,1999999999999995 y el validador la
-    // rechaza por un error de redondeo, no por un problema de la dieta.
-    // La tolerancia es de una parte en un millón: no alcanza para dejar pasar
-    // nada realmente fuera de límite.
     const tol = (lim) => Math.max(Math.abs(lim) * 1e-6, 1e-9);
 
     let violada = false;
@@ -444,18 +415,6 @@ function redondear(v) {
   return v.toFixed(2);
 }
 
-/**
- * Score de riesgo de acidosis, 0 (seguro) a 100 (peligro).
- * Heurística compuesta, NO es una norma publicada.
- *
- * Diferencias con la versión anterior:
- *   - Umbrales de peNDF y forraje por sistema productivo.
- *   - Considera azúcares (melaza, cachaza, caña) además de almidón.
- *   - Penaliza la incertidumbre por almidón no declarado.
- *   - El ionóforo reduce el score pero NUNCA lleva la dieta a "bajo"
- *     si el peNDF está por debajo del mínimo del sistema.
- *   - Devuelve los componentes del score para que la UI muestre por qué.
- */
 export const SISTEMA = {
   PASTORIL: 'pastoril',
   SEMI_INTENSIVO: 'semiIntensivo',
@@ -465,11 +424,6 @@ export const SISTEMA = {
 /**
  * Score de riesgo de acidosis, 0 (seguro) a 100 (peligro).
  * Heurística compuesta, NO es una norma publicada.
- *
- * NOTA DE CALIBRACIÓN: con los pesos de esta versión, una ración
- * semi-intensiva con peNDF 17 %, almidón 25 %, azúcares 20 % y almidón
- * desconocido da score ≈ 52 → "alto". Eso es INTENCIONAL.
- * No bajar los pesos para forzar "moderado".
  */
 export function scoreAcidosis({
   peNdfPct, almidonPct, forrajePct,
@@ -548,87 +502,9 @@ export function scoreAcidosis({
   return { score, nivel, minPeNdf, minForraje, componentes, riesgoEstructural };
 }
 
-  // ---- peNDF: umbral por sistema ----
-  const minPeNdf =
-    sistemaId === SISTEMA.FEEDLOT ? 8
-    : sistemaId === SISTEMA.SEMI_INTENSIVO ? 20
-    : 25;
-
-  const deltaPeNdf = peNdfPct - minPeNdf;
-  if (deltaPeNdf < -8)       componentes.peNdf = 50;
-  else if (deltaPeNdf < -4)  componentes.peNdf = 35;
-  else if (deltaPeNdf < 0)   componentes.peNdf = 20;
-  else if (deltaPeNdf < 3)   componentes.peNdf = 8;
-  score += componentes.peNdf;
-
-  // ---- Almidón ----
-  if (almidonPct > 45)       componentes.almidon = 25;
-  else if (almidonPct > 38)  componentes.almidon = 18;
-  else if (almidonPct > 30)  componentes.almidon = 10;
-  else if (almidonPct > 22)  componentes.almidon = 4;
-  score += componentes.almidon;
-
-  // ---- Azúcares (melaza, cachaza, caña) ----
-  if (azucaresPct > 15)      componentes.azucares = 20;
-  else if (azucaresPct > 10) componentes.azucares = 12;
-  else if (azucaresPct > 6)  componentes.azucares = 6;
-  score += componentes.azucares;
-
-  // ---- Forraje: umbral por sistema ----
-  const minForraje =
-    sistemaId === SISTEMA.FEEDLOT ? 5
-    : sistemaId === SISTEMA.SEMI_INTENSIVO ? 30
-    : 60;
-
-  const deltaForr = forrajePct - minForraje;
-  if (deltaForr < -15)       componentes.forraje = 20;
-  else if (deltaForr < -8)   componentes.forraje = 12;
-  else if (deltaForr < 0)    componentes.forraje = 5;
-  score += componentes.forraje;
-
-  // ---- Incertidumbre por almidón no declarado ----
-  if (almidonDesconocido) {
-    componentes.desconocido = 8;
-    score += 8;
-  }
-
-  // ---- Ionóforo ----
-  if (tieneIonoforo) {
-    componentes.ionoforo = -10;
-    score -= 10;
-  }
-
-  // ---- Fase de adaptación ----
-  if (fase === FASE.RECEP) {
-    componentes.fase = 15;
-    score += 15;
-  }
-
-  score = Math.min(Math.max(score, 0), 100);
-
-  let nivel = 'bajo';
-  if (score >= 60) nivel = 'crítico';
-  else if (score >= 40) nivel = 'alto';
-  else if (score >= 20) nivel = 'moderado';
-
-  // Regla de seguridad: si el peNDF está por debajo del mínimo del sistema
-  // y hay azúcares o almidón significativos, NUNCA reportar "bajo" aunque
-  // el ionóforo haya bajado el score.
-  const riesgoEstructural =
-    peNdfPct < minPeNdf - 2 && (azucaresPct > 8 || almidonPct > 25);
-  if (riesgoEstructural && nivel === 'bajo') nivel = 'moderado';
-
-  return { score, nivel, minPeNdf, minForraje, componentes, riesgoEstructural };
-}
 /**
  * Única fuente de verdad del mínimo de fósforo como % de la MS.
- *
- * NO es un valor BR-CORTE publicado. Es un umbral operativo del motor, con
- * ~15 % de margen sobre el requerimiento fisiológico calculado en animal.js.
- * Se ajusta por sistema productivo porque la presión de producción es distinta.
- *
- * Tanto el solver (vía limitesVigentes en constraints.js) como la UI deben
- * llamar a esta función. No duplicar el número en ningún otro lado.
+ * Umbral operativo del motor, no valor BR-CORTE publicado.
  */
 export function pMinVigente({ sistemaId } = {}) {
   if (sistemaId === 'pastoril')      return 0.18;
