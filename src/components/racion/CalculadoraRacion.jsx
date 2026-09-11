@@ -22,6 +22,7 @@ const CalculadoraRacion = ({
   const [sistema, setSistema] = useState("semiIntensivo");
   const [modo, setModo] = useState("optimo");
   const [faseFeedlot, setFaseFeedlot] = useState("inicio");
+  const [temperatura, setTemperatura] = useState(28);
   const [selIds, setSelIds] = useState(new Set());
   const [misAlimentosIds, setMisAlimentosIds] = useState(new Set());
   const [busq, setBusq] = useState("");
@@ -106,7 +107,8 @@ const CalculadoraRacion = ({
       alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
       estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
-      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
+      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null,
+      temperatura: parseFloat(temperatura) || 28
     });
     if (!res.error) setResultado(res);
   };
@@ -123,7 +125,8 @@ const CalculadoraRacion = ({
       alimentosDisponibles: alimentosUsar, preciosUsuario: preciosUsr,
       estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
-      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null
+      alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null,
+      temperatura: parseFloat(temperatura) || 28
     });
     if (!res.error) setResultado(res);
   };
@@ -142,16 +145,12 @@ const CalculadoraRacion = ({
       if (!animalSeleccionado) { alert("Selecciona un animal"); return; }
       const animal = animales.find(a => a._id === animalSeleccionado);
       if (!animal) { alert("Animal no encontrado"); return; }
-      destinoId = animal._id;
-      destinoNombre = animal.nombre;
-      destinoTipo = "animal";
+      destinoId = animal._id; destinoNombre = animal.nombre; destinoTipo = "animal";
     } else {
       if (!grupoSeleccionado) { alert("Selecciona un grupo"); return; }
       const grupo = grupos.find(g => g.id === grupoSeleccionado);
       if (!grupo) { alert("Grupo no encontrado"); return; }
-      destinoId = grupo.id;
-      destinoNombre = grupo.nombre;
-      destinoTipo = "grupo";
+      destinoId = grupo.id; destinoNombre = grupo.nombre; destinoTipo = "grupo";
     }
     if (!uid) { alert("Error: Usuario no autenticado"); return; }
     setGuardando(true);
@@ -162,9 +161,11 @@ const CalculadoraRacion = ({
         fecha_local: new Date().toLocaleDateString(),
         peso_animal: parseFloat(peso),
         raza, sistema, modo,
+        temperatura: parseFloat(temperatura) || 28,
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
+        aditivos: resultado.aditivosRecomendados || [],
         ingredientes: resultado.racion.map(r => ({ id: r.id, nombre: r.nombre, categoria: r.categoria, kg_dia: r.kg_dia, ms_kg: r.ms_kg })),
         destino_id: destinoId,
         destino_nombre: destinoNombre,
@@ -204,7 +205,10 @@ const CalculadoraRacion = ({
     <div className="flex flex-col gap-5">
       <h2 className="text-2xl font-black text-white">🐄 GanaBov Engine Pro</h2>
       <Card className="flex flex-col gap-4">
-        <Inp label="Peso (kg)" type="number" value={peso} onChange={e => { setPeso(e.target.value); setResultado(null); }} placeholder="280" />
+        <div className="grid grid-cols-2 gap-3">
+          <Inp label="Peso (kg)" type="number" value={peso} onChange={e => { setPeso(e.target.value); setResultado(null); }} placeholder="280" />
+          <Inp label="Temperatura (°C)" type="number" value={temperatura} onChange={e => { setTemperatura(e.target.value); setResultado(null); }} placeholder="28" />
+        </div>
         <Sel label="Raza" value={raza} onChange={e => setRaza(e.target.value)} className="bg-zinc-800 border border-zinc-600 text-white rounded-xl">
           {RAZAS.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
         </Sel>
@@ -320,10 +324,34 @@ const CalculadoraRacion = ({
 
       {resultado && (
         <Card>
-          <div className="flex justify-between items-center mb-2"><h3 className="text-white font-bold">📊 Resultados</h3><Badge color={resultado.gdp_estimada > 0.8 ? "green" : resultado.gdp_estimada > 0.4 ? "yellow" : "orange"}>{resultado.gdp_estimada} kg/día</Badge></div>
-          {resultado.alertasCalidad && resultado.alertasCalidad.map((a, i) => <div key={i} className="border border-red-700 bg-red-950/50 p-2 rounded-lg mb-2"><div className="text-red-400 font-bold text-sm">🚨 ALERTA: {a.nombre} - Calidad "{a.calidad}"</div><div className="text-red-300 text-xs mt-1">{a.mensaje}</div></div>)}
-          {resultado.deficiencias && resultado.deficiencias.map((d, i) => <div key={i} className="border border-amber-700 bg-amber-950/30 p-2 rounded-lg mb-2"><div className="text-amber-400 text-sm font-bold">{d.msg}</div></div>)}
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-white font-bold">📊 Resultados</h3>
+            <Badge color={resultado.gdp_estimada > 0.8 ? "green" : resultado.gdp_estimada > 0.4 ? "yellow" : "orange"}>
+              GDP {resultado.gdp_estimada} kg/día
+            </Badge>
+          </div>
+
+          {resultado.alertasCalidad && resultado.alertasCalidad.map((a, i) => (
+            <div key={i} className="border border-red-700 bg-red-950/50 p-2 rounded-lg mb-2">
+              <div className="text-red-400 font-bold text-sm">🚨 ALERTA: {a.nombre} - Calidad "{a.calidad}"</div>
+              <div className="text-red-300 text-xs mt-1">{a.mensaje}</div>
+            </div>
+          ))}
+
+          {resultado.deficiencias && resultado.deficiencias.map((d, i) => (
+            <div key={i} className="border border-amber-700 bg-amber-950/30 p-2 rounded-lg mb-2">
+              <div className="text-amber-400 text-sm font-bold">{d.msg}</div>
+            </div>
+          ))}
+
+          {resultado.alertas && resultado.alertas.length > 0 && resultado.alertas.map((a, i) => (
+            <div key={i} className="border border-amber-700 bg-amber-950/30 p-2 rounded-lg mb-2">
+              <div className="text-amber-300 text-sm">{a}</div>
+            </div>
+          ))}
+
           <div className="text-xs font-bold mt-2">Ingredientes {mostrarMultiplicador ? `(${numAnimales} animales × ${numDias} días)` : "(por animal/día)"}</div>
+          
           {resultado.racion.map((al, i) => {
             const kgPorAnimal = al.kg_dia;
             const loteTotal = mostrarMultiplicador ? (kgPorAnimal * (numAnimales || 1)).toFixed(2) : null;
@@ -331,7 +359,8 @@ const CalculadoraRacion = ({
             return (
               <div key={i} className="flex justify-between items-center border-b border-zinc-700 py-2">
                 <div className="flex-1">
-                  <span className="text-sm">{al.nombre}</span><span className="text-xs text-zinc-500 ml-2">({al.categoria})</span>
+                  <span className="text-sm">{al.nombre}</span>
+                  <span className="text-xs text-zinc-500 ml-2">({al.categoria})</span>
                   <div className="flex gap-2 mt-1">
                     <select value={estadosCalidad[al.id] || al.calidad || "Óptimo"} onChange={(e) => cambiarCalidad(al.id, e.target.value)} className={`bg-zinc-800 border rounded-lg px-2 py-0.5 text-xs ${estadosCalidad[al.id] === "Bajo" || estadosCalidad[al.id] === "Muy deteriorado" ? "border-red-500 text-red-400" : "border-zinc-600"}`}>
                       {QUALITY_OPTIONS.map(q => <option key={q} value={q}>{q}</option>)}
@@ -349,6 +378,29 @@ const CalculadoraRacion = ({
               </div>
             );
           })}
+
+          {/* ADITIVOS RECOMENDADOS */}
+          {resultado.aditivosRecomendados && resultado.aditivosRecomendados.length > 0 && (
+            <div className="mt-3 p-3 bg-blue-950/30 border border-blue-700/50 rounded-lg">
+              <div className="text-blue-400 text-sm font-bold mb-2">💊 Aditivos recomendados</div>
+              {resultado.aditivosRecomendados.map((ad, i) => (
+                <div key={i} className="bg-zinc-800 rounded-lg p-2 mb-1 last:mb-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white text-sm font-semibold">{ad.nombre}</span>
+                    <span className="text-blue-400 font-bold text-sm">{ad.dosisGramos} g/día</span>
+                  </div>
+                  <div className="text-zinc-400 text-xs mt-1">{ad.funcion}</div>
+                  <div className="text-zinc-500 text-xs mt-0.5">
+                    Dosis: {ad.dosisPorKgMS} mg/kg MS · Total: {ad.dosisMg} mg/día
+                  </div>
+                  {ad.advertencia && (
+                    <div className="text-red-400 text-xs mt-1">⚠️ {ad.advertencia}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {mostrarMultiplicador && (
             <div className="mt-3 bg-emerald-950/30 p-2 rounded-lg border border-emerald-700/50">
               <div className="text-emerald-400 text-xs font-bold mb-1">📊 Resumen para {numAnimales} animales durante {numDias} días</div>
@@ -361,6 +413,7 @@ const CalculadoraRacion = ({
               </div>
             </div>
           )}
+
           <div className="grid grid-cols-2 gap-2 mt-3">
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">MS total</span><br/><b>{resultado.indicadores.ms_total_kg} kg</b> ({resultado.indicadores.ms_pct_pv}% PV)</div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">peNDF</span><br/><b>{resultado.indicadores.peNDF_pct}%</b></div>
@@ -369,19 +422,42 @@ const CalculadoraRacion = ({
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Riesgo acidosis</span><br/><Badge color={getRiesgoColor(resultado.indicadores.riesgo_acidosis)}>{resultado.indicadores.riesgo_acidosis}</Badge></div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Costo/día</span><br/><b>Bs. {resultado.indicadores.costo_dia}</b> {mostrarMultiplicador && <span className="text-xs text-zinc-500">/animal</span>}</div>
           </div>
+
+          {/* RELACIÓN Ca:P */}
+          {resultado.indicadores.ratio_ca_p !== null && resultado.indicadores.ratio_ca_p !== undefined && (
+            <div className="mt-3 p-2 bg-zinc-800 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-zinc-400">Relación Ca:P</span>
+                <span className={`font-bold text-sm ${resultado.indicadores.ratio_ca_p >= 1.5 && resultado.indicadores.ratio_ca_p <= 7 ? "text-emerald-400" : "text-amber-400"}`}>
+                  {resultado.indicadores.ratio_ca_p}:1
+                </span>
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                Ca: {resultado.indicadores.ca_total}% · P: {resultado.indicadores.p_total}% · Ideal: 2:1 a 4:1
+              </div>
+            </div>
+          )}
+
           {modoProfesional && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Cumplimiento energía</span><div className="font-bold text-emerald-400">{resultado.indicadores.cumplimiento_energia}%</div></div>
+              <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Cumplimiento proteína</span><div className="font-bold text-emerald-400">{resultado.indicadores.cumplimiento_proteina}%</div></div>
               <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Score acidosis</span><div className="font-bold text-emerald-400">{resultado.indicadores.score_acidosis}</div></div>
-              <div className="bg-zinc-800 p-2 rounded text-center col-span-2"><span className="text-xs">Conversión alimenticia</span><div className="font-bold text-emerald-400">{resultado.indicadores.conversion}</div></div>
+              <div className="bg-zinc-800 p-2 rounded text-center"><span className="text-xs">Conversión</span><div className="font-bold text-emerald-400">{resultado.indicadores.conversion}</div></div>
             </div>
           )}
-          {resultado.explicaciones && resultado.explicaciones.map((e, i) => <div key={i} className="text-sky-300 text-xs italic mt-2">🧠 {e}</div>)}
+
+          {resultado.explicaciones && resultado.explicaciones.map((e, i) => (
+            <div key={i} className="text-sky-300 text-xs italic mt-2">🧠 {e}</div>
+          ))}
+
           {esPastorilAuto && (
             <div className="mt-3 p-3 bg-blue-950/30 border border-blue-700/50 rounded-lg">
               <div className="text-blue-400 text-sm font-bold mb-1">🌿 Instrucciones para sistema pastoril</div>
-              <p className="text-blue-300 text-xs">Este suplemento debe ser ofrecido <strong>junto con pasto fresco de buena calidad</strong> en el potrero. El animal ya consume forraje directamente, por lo que el suplemento solo complementa la energía y proteína que el pasto no alcanza a cubrir. Asegúrese de que el animal tenga acceso a pasto durante todo el día para mantener una buena salud ruminal y evitar acidosis.</p>
-              <p className="text-blue-300 text-xs mt-1">Si el pasto es escaso o de baja calidad, reduzca la cantidad de suplemento o consulte a un nutricionista.</p>
+              <p className="text-blue-300 text-xs">
+                Este suplemento debe ser ofrecido <strong>junto con pasto fresco de buena calidad</strong> en el potrero. 
+                El animal ya consume forraje directamente, por lo que el suplemento solo complementa la energía y proteína que el pasto no alcanza a cubrir.
+              </p>
             </div>
           )}
         </Card>
