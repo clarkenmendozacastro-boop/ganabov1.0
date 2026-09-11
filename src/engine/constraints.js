@@ -11,7 +11,7 @@
 // Todas las filas se expresan como sum(coef_i * x_i) OP rhs, con las unidades
 // del numerador del indicador (kg de FDN, kg de almidón, g de Ca, etc.).
 
-import { REGLAS, SEV, FASE } from './safety.js';
+import { REGLAS, SEV, FASE, pMinVigente } from './safety.js';
 
 // ---------------------------------------------------------------------------
 // Clasificación de alimentos
@@ -122,9 +122,18 @@ function aplicaFase(r, fase) {
  *
  * @param {string} fase FASE.RECEP | FASE.CREC | FASE.TERM
  * @param {object} contexto valores de la dieta para los máximos dinámicos
+ * @param {object} [opts]
+ * @param {string} [opts.sistemaId]  'pastoril' | 'semiIntensivo' | 'feedlot'.
+ *   V93b declara `min: null` a propósito, para no tener una segunda fuente de
+ *   verdad del umbral de fósforo. Cuando la regla es V93b, el mínimo se
+ *   resuelve contra pMinVigente({ sistemaId }). Si falta sistemaId (o el
+ *   sistema no tiene umbral definido), V93b NO aporta límite: el llamador
+ *   debe decidir qué hacer — este motor registra un aviso de configuración
+ *   desde evaluarSeguridad(), nunca inventa un default.
  * @returns {object} { [campo]: { minBlock, maxBlock, minWarn, maxWarn, reglas } }
  */
-export function limitesVigentes(fase, contexto = {}) {
+export function limitesVigentes(fase, contexto = {}, opts = {}) {
+  const { sistemaId } = opts;
   const out = {};
   for (const r of REGLAS) {
     if (!aplicaFase(r, fase)) continue;
@@ -138,10 +147,23 @@ export function limitesVigentes(fase, contexto = {}) {
 
     const kMin = r.sev === SEV.BLOCK ? 'minBlock' : 'minWarn';
     const kMax = r.sev === SEV.BLOCK ? 'maxBlock' : 'maxWarn';
+
+    // Resolución del mínimo.
+    //   - Para toda regla normal: r.min tal como está declarado.
+    //   - Para V93b: pMinVigente({ sistemaId }). Si falta sistemaId o el
+    //     sistema es desconocido, pMinVigente devuelve null y V93b queda sin
+    //     límite en el LP. No hay fallback a 0.22 acá: el silencio sería
+    //     peor que la ausencia.
+    //
     // numOrNull y no Number.isFinite(Number(x)): una regla con max: null
     // (o sea, "sin techo") se leía como techo = 0 y volvía infactible
     // todo el problema.
-    const rMin = numOrNull(r.min);
+    let rMin;
+    if (r.id === 'V93b') {
+      rMin = sistemaId ? pMinVigente({ sistemaId }) : null;
+    } else {
+      rMin = numOrNull(r.min);
+    }
     const rMax = numOrNull(max);
     if (rMin !== null) {
       o[kMin] = o[kMin] === null ? rMin : Math.max(o[kMin], rMin);
@@ -163,6 +185,9 @@ export function limitesVigentes(fase, contexto = {}) {
  * @param {number} p.dmi            MS total objetivo, kg/día (fija la escala)
  * @param {number} p.pv             peso vivo, kg
  * @param {string} p.fase           FASE.RECEP | CREC | TERM
+ * @param {string} p.sistemaId      'pastoril' | 'semiIntensivo' | 'feedlot'.
+ *   Requerido para que V93b resuelva su mínimo vía pMinVigente(). Si falta,
+ *   V93b no se impone en el LP (no hay fallback silencioso).
  * @param {number} p.emRequerida    Mcal de EM/día que debe aportar la dieta
  * @param {number} p.pbRequeridaKg  kg de PB/día (derivada del requerimiento de PM)
  * @param {number} p.pdrRequeridaKg kg de proteína degradable/día (= PBmic)
@@ -176,6 +201,7 @@ export function limitesVigentes(fase, contexto = {}) {
 export function construirRestricciones({
   alimentos, dmi, pv, fase,
   emRequerida, pbRequeridaKg, pdrRequeridaKg, caRequeridaG, pRequeridaG,
+  sistemaId,
   contexto = {}, exigirWarn = true,
   // Criterios de practicidad (NO son normas publicadas, ver bloque 9)
   margenPb = 1.25, margenMinerales = 1.6, topeIngredientePct = 60,
@@ -232,7 +258,11 @@ export function construirRestricciones({
   });
 
   // --- 5. Límites de seguridad, leídos de safety.js -------------------------
-  const lim = limitesVigentes(fase, contexto);
+  // Acá entra también V93b: limitesVigentes() resuelve su mínimo contra
+  // pMinVigente({ sistemaId }) y lo deja en minWarn, así que la fila elástica
+  // WARN `pPct >= pMin% MS` sale sola del loop de abajo. NO hay una fila
+  // especial de fósforo: una sola ruta de construcción.
+  const lim = limitesVigentes(fase, contexto, { sistemaId });
   const impuestos = [];
 
   for (const [campo, l] of Object.entries(lim)) {
@@ -246,7 +276,7 @@ export function construirRestricciones({
       if (pct === null || pct === undefined) return;
       if (op === '>=' && !aporta) return;
       // Margen del 1 % contra el límite duro. Sin esto el solver se para
-      // EXACTAMENTE sobre el límite (grasa 6,000 %) y el validador, que usa
+      // EXACTAMENTE sobre el límite (grasa 6,000 %) y el validador, que usa
       // aritmética de punto flotante, lo lee como violado. El margen se aplica
       // hacia el lado seguro: los máximos se bajan y los mínimos se suben.
       const margen = sev === SEV.BLOCK ? 0.01 : 0;
