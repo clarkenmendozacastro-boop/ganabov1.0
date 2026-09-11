@@ -418,7 +418,7 @@ const CalculadoraRacion = ({
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">MS total</span><br/><b>{resultado.indicadores.ms_total_kg} kg</b> ({resultado.indicadores.ms_pct_pv}% PV)</div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">peNDF</span><br/><b>{resultado.indicadores.peNDF_pct}%</b></div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">ENm aportada</span><br/><b>{resultado.indicadores.enm_aportada}</b> / {resultado.indicadores.enm_requerida} Mcal</div>
-            <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">PB aportada</span><br/><b>{resultado.indicadores.pb_aportada}</b> / {resultado.indicadores.pb_requerida} g</div>
+            <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">PB aportada</span><br/><b>{resultado.indicadores.pb_aportada}</b> / {resultado.indicadores.pb_requerida} kg</div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Riesgo acidosis</span><br/><Badge color={getRiesgoColor(resultado.indicadores.riesgo_acidosis)}>{resultado.indicadores.riesgo_acidosis}</Badge></div>
             <div className="bg-zinc-800 p-2 rounded"><span className="text-xs">Costo/día</span><br/><b>Bs. {resultado.indicadores.costo_dia}</b> {mostrarMultiplicador && <span className="text-xs text-zinc-500">/animal</span>}</div>
           </div>
@@ -428,12 +428,12 @@ const CalculadoraRacion = ({
             <div className="mt-3 p-2 bg-zinc-800 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-zinc-400">Relación Ca:P</span>
-                <span className={`font-bold text-sm ${resultado.indicadores.ratio_ca_p >= 1.5 && resultado.indicadores.ratio_ca_p <= 7 ? "text-emerald-400" : "text-amber-400"}`}>
+                <span className={`font-bold text-sm ${resultado.indicadores.ratio_ca_p >= 1.2 && resultado.indicadores.ratio_ca_p <= 6 ? "text-emerald-400" : "text-amber-400"}`}>
                   {resultado.indicadores.ratio_ca_p}:1
                 </span>
               </div>
               <div className="text-xs text-zinc-500 mt-0.5">
-                Ca: {resultado.indicadores.ca_total}% · P: {resultado.indicadores.p_total}% · Ideal: 2:1 a 4:1
+                Ca: {resultado.indicadores.ca_total_g} g (necesita {resultado.indicadores.ca_requerida_g} g) · P: {resultado.indicadores.p_total_g} g (necesita {resultado.indicadores.p_requerida_g} g) · Ideal 2:1, aceptable de 1,2:1 a 6:1
               </div>
             </div>
           )}
