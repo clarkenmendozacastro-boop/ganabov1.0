@@ -18,7 +18,8 @@
 import { perfilAnimal, nemRequerido, negRequerido, mineralesRequeridos } from '../src/engine/animal.js';
 import { deDesdeTdn, meDesdeDe, nemDieta, negDieta, tdnWeiss, corregirTdnEstimado } from '../src/engine/energy.js';
 import { dmiBrCorte, dmiNrc } from '../src/engine/intake.js';
-import { evaluarSeguridad } from '../src/engine/safety.js';
+import { evaluarSeguridad, pMinVigente } from '../src/engine/safety.js';
+import { construirRestricciones } from '../src/engine/constraints.js';
 import { rampaAdaptacion, validarRampa } from '../src/engine/adaptation.js';
 import { formularRacionAvanzada } from '../src/engine/index.js';
 
@@ -245,6 +246,220 @@ if (!buena.error && !mala.error) {
     `Con alimentos deteriorados la ganancia baja (${mala.gdp_estimada} vs ${buena.gdp_estimada} kg/d)`,
     mala.gdp_estimada <= buena.gdp_estimada,
   );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n9. V93b resuelto por pMinVigente() — política WARN');
+// ---------------------------------------------------------------------------
+
+// --- 9a. Valores de pMinVigente() por sistema ------------------------------
+ok('pMinVigente(pastoril) === 0.18',      pMinVigente({ sistemaId: 'pastoril' }) === 0.18);
+ok('pMinVigente(semiIntensivo) === 0.22', pMinVigente({ sistemaId: 'semiIntensivo' }) === 0.22);
+ok('pMinVigente(feedlot) === 0.28',       pMinVigente({ sistemaId: 'feedlot' }) === 0.28);
+ok('pMinVigente({}) === null (sin fallback silencioso)', pMinVigente({}) === null);
+ok('pMinVigente({ sistemaId: "desconocido" }) === null',
+   pMinVigente({ sistemaId: 'desconocido' }) === null);
+
+// --- 9b. pastoril con P = 0.15 % MS → WARN V93b con min 0.18 --------------
+{
+  const r = evaluarSeguridad(
+    { pPct: 0.15, caPct: 0.5, ratioCaP: 3.33, ndfPct: 55, peNdfPct: 40, forrajePct: 80 },
+    'CREC',
+    { sistemaId: 'pastoril' },
+  );
+  const v93b = r.advertencias.find((w) => w.id === 'V93b');
+  ok('pastoril P=0.15: V93b aparece como advertencia', !!v93b);
+  ok('pastoril P=0.15: V93b NO aparece como bloqueo', !r.bloqueos.some((b) => b.id === 'V93b'));
+  ok('pastoril P=0.15: el mínimo resuelto es 0.18', v93b && v93b.min === 0.18);
+  ok('pastoril P=0.15: sin avisos de configuración',
+     !r.avisosConfiguracion || r.avisosConfiguracion.length === 0);
+}
+
+// --- 9c. semiIntensivo con P = 0.15 % MS → umbral 0.22 --------------------
+{
+  const r = evaluarSeguridad(
+    { pPct: 0.15, caPct: 0.5, ratioCaP: 3.33 },
+    'CREC',
+    { sistemaId: 'semiIntensivo' },
+  );
+  const v93b = r.advertencias.find((w) => w.id === 'V93b');
+  ok('semiIntensivo P=0.15: V93b aparece', !!v93b);
+  ok('semiIntensivo P=0.15: el mínimo resuelto es 0.22', v93b && v93b.min === 0.22);
+  ok('semiIntensivo P=0.15: sin bloqueo V93b', !r.bloqueos.some((b) => b.id === 'V93b'));
+}
+
+// --- 9d. feedlot con P = 0.15 % MS → umbral 0.28 --------------------------
+{
+  const r = evaluarSeguridad(
+    { pPct: 0.15, caPct: 0.5, ratioCaP: 3.33 },
+    'TERM',
+    { sistemaId: 'feedlot' },
+  );
+  const v93b = r.advertencias.find((w) => w.id === 'V93b');
+  ok('feedlot P=0.15: V93b aparece', !!v93b);
+  ok('feedlot P=0.15: el mínimo resuelto es 0.28', v93b && v93b.min === 0.28);
+}
+
+// --- 9e. P ≥ umbral en cada sistema → sin V93b ----------------------------
+{
+  const pares = [['pastoril', 0.18], ['semiIntensivo', 0.22], ['feedlot', 0.28]];
+  for (const [sid, umbral] of pares) {
+    const r = evaluarSeguridad(
+      { pPct: umbral + 0.02, caPct: 0.5, ratioCaP: 2.0 },
+      'CREC',
+      { sistemaId: sid },
+    );
+    ok(`${sid} P=${(umbral + 0.02).toFixed(2)}: V93b no dispara`,
+       !r.advertencias.some((w) => w.id === 'V93b'));
+  }
+}
+
+// --- 9f. Sin sistemaId → diagnóstico explícito, no silencio ---------------
+{
+  const r = evaluarSeguridad({ pPct: 0.15, caPct: 0.5, ratioCaP: 3.33 }, 'CREC');
+  ok('sin sistemaId: la respuesta trae avisosConfiguracion',
+     Array.isArray(r.avisosConfiguracion));
+  ok('sin sistemaId: hay al menos un aviso', r.avisosConfiguracion.length >= 1);
+  ok('sin sistemaId: V93b NO se evalúa silenciosamente',
+     !r.advertencias.some((w) => w.id === 'V93b'));
+  ok('sin sistemaId: el aviso menciona V93b',
+     r.avisosConfiguracion.some((m) => m.includes('V93b')));
+}
+
+// --- 9g. La fila V93b llega al LP como WARN elástica ----------------------
+// Se construye un conjunto mínimo de alimentos para que construirRestricciones
+// pueda armar las filas, y se inspecciona que la fila de fósforo está presente
+// con las propiedades correctas.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_x',    categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+    { id: 'fosfato_x', categoria: 'mineral', ndf: 0, pef: 0, p: 17.0, ca: 23.9,
+      em: 0, pb: 0, almidon: 0, ee: 0, s: 0, mg: 0.6, k: 0, max_inclusion_pct: 2 },
+  ];
+  const base = {
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  };
+  const { rows: rowsCon } = construirRestricciones({ ...base, sistemaId: 'pastoril' });
+  const { rows: rowsSin } = construirRestricciones({ ...base });
+
+  const filaV93b = rowsCon.find((r) => r.name && r.name.includes('V93b'));
+  ok('LP con sistemaId: la fila V93b existe', !!filaV93b);
+  ok('LP con sistemaId: la fila V93b tiene campo "pPct"', filaV93b && filaV93b.campo === 'pPct');
+  ok('LP con sistemaId: la fila V93b tiene op ">="', filaV93b && filaV93b.op === '>=');
+  ok('LP con sistemaId: la fila V93b es elástica', filaV93b && filaV93b.elastic === true);
+  ok('LP con sistemaId: la fila V93b lleva severidad WARN (no BLOCK)',
+     filaV93b && filaV93b.severidad === 'WARN');
+  // rhs en kg de P/día: 0.18 % de 10 kg MS = 0.018 kg
+  ok(`LP con sistemaId: el rhs de V93b es ${(0.18 / 100 * 10).toFixed(4)} kg P/día`,
+     filaV93b && Math.abs(filaV93b.rhs - (0.18 / 100) * 10) < 1e-9);
+
+  // Sin sistemaId, no debe emitirse ninguna fila V93b ni pPct con ese nombre.
+  const sinV93b = rowsSin.filter((r) => r.name && r.name.includes('V93b'));
+  ok('LP sin sistemaId: NO se emite la fila V93b', sinV93b.length === 0);
+
+  // La fila WARN es blanda: penalización baja comparada con un BLOCK.
+  ok('LP con sistemaId: la penalización de V93b es menor que la de un BLOCK',
+     filaV93b && typeof filaV93b.penalty === 'number' && filaV93b.penalty < 100);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n10. Requerimientos escalan con el peso (250, 350, 450 y 550 kg)');
+// ---------------------------------------------------------------------------
+
+const pesos = [250, 350, 450, 550];
+const corridas = [];
+for (const pv of pesos) {
+  const r = formularRacionAvanzada({
+    pv, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (r.error) {
+    ok(`peso ${pv} kg: formula sin error`, false, r.error);
+    continue;
+  }
+  corridas.push({ pv, r });
+}
+
+ok('Los cuatro pesos formularon', corridas.length === 4);
+
+if (corridas.length === 4) {
+  for (let i = 1; i < corridas.length; i++) {
+    const a = corridas[i - 1], b = corridas[i];
+    ok(`Ca requerido crece ${a.pv}→${b.pv} (${a.r.indicadores.ca_requerida_g} → ${b.r.indicadores.ca_requerida_g} g/d)`,
+       b.r.indicadores.ca_requerida_g > a.r.indicadores.ca_requerida_g);
+    ok(`P requerido crece ${a.pv}→${b.pv} (${a.r.indicadores.p_requerida_g} → ${b.r.indicadores.p_requerida_g} g/d)`,
+       b.r.indicadores.p_requerida_g > a.r.indicadores.p_requerida_g);
+    ok(`Consumo MS crece ${a.pv}→${b.pv} (${a.r.indicadores.ms_total_kg} → ${b.r.indicadores.ms_total_kg} kg/d)`,
+       b.r.indicadores.ms_total_kg > a.r.indicadores.ms_total_kg);
+  }
+
+  const gdps = corridas.map((x) => x.r.gdp_estimada);
+  ok('Las cuatro GDP no son idénticas', new Set(gdps).size > 1,
+     `gdps: ${gdps.join(', ')}`);
+
+  // Caso principal: Nelore 350 kg semiIntensivo
+  const principal = corridas.find((x) => x.pv === 350);
+  const r350 = principal.r;
+
+  ok('Nelore 350 semiIntensivo: gdp_objetivo es número > 0',
+     typeof r350.gdp_objetivo === 'number' && r350.gdp_objetivo > 0);
+  ok(`Nelore 350 semiIntensivo: gdp_estimada > 0 (${r350.gdp_estimada} kg/d)`,
+     typeof r350.gdp_estimada === 'number' && r350.gdp_estimada > 0);
+  ok('Nelore 350 semiIntensivo: sin bloqueos de seguridad',
+     r350.seguridad.bloqueos.length === 0,
+     r350.seguridad.bloqueos.map((b) => b.detalle).join(' ; '));
+  ok('Nelore 350 semiIntensivo: sin avisos de configuración',
+     Array.isArray(r350.avisosConfiguracion) && r350.avisosConfiguracion.length === 0);
+  ok(`Nelore 350 semiIntensivo: score de acidosis presente (${r350.indicadores.score_acidosis})`,
+     typeof r350.indicadores.score_acidosis === 'number');
+  ok(`Nelore 350 semiIntensivo: nivel de acidosis coherente (${r350.indicadores.riesgo_acidosis})`,
+     typeof r350.indicadores.riesgo_acidosis === 'string');
+  ok(`Nelore 350 semiIntensivo: la energía reportada no es null (${r350.indicadores.enm_aportada} Mcal)`,
+     typeof r350.indicadores.enm_aportada === 'number');
+  ok(`Nelore 350 semiIntensivo: la proteína reportada no es null (${r350.indicadores.pb_aportada} kg)`,
+     typeof r350.indicadores.pb_aportada === 'number');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n11. Unidades de fósforo (% de la MS, no fracción ni g/kg)');
+// ---------------------------------------------------------------------------
+
+// pPct se reconstruye desde p_total_g (gramos) y ms_total_kg (kg):
+//   pPct (% MS) = p_total_g / (ms_total_kg * 1000) * 100 = p_total_g / ms_total_kg / 10
+// Si la unidad fuera fracción (0–1) el resultado no coincidiría con un umbral
+// de 0.18–0.28. Si fuera g/kg sería 10× más grande.
+{
+  const r = formularRacionAvanzada({ pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28 });
+  if (!r.error) {
+    const pPctReconstruido = r.indicadores.p_total_g / r.indicadores.ms_total_kg / 10;
+    ok(`pPct reconstruido (${pPctReconstruido.toFixed(3)} %) está en rango fisiológico (0.1 – 0.8)`,
+       pPctReconstruido > 0.1 && pPctReconstruido < 0.8);
+    ok(`pPct reconstruido (${pPctReconstruido.toFixed(3)}) es del orden de los umbrales pMinVigente (0.18–0.28)`,
+       pPctReconstruido > 0.1 && pPctReconstruido < 0.5);
+
+    // Consistencia interna de p_total_g con pPct
+    const pG_rec = (pPctReconstruido / 100) * r.indicadores.ms_total_kg * 1000;
+    ok(`p_total_g reportado (${r.indicadores.p_total_g}) coincide con el reconstruido (${pG_rec.toFixed(2)})`,
+       Math.abs(r.indicadores.p_total_g - pG_rec) < 0.05);
+  }
+}
+
+// La propiedad `a.p` de la base es un porcentaje de MS (0–100), no una fracción.
+// Se verifica con un alimento conocido de la base: el maíz amarillo declara
+// P = 0.32 % de la MS (Feedipedia). Si estuviera como fracción, sería 0.0032.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const maiz = ALIMENTOS_BASE.find((a) => a.id === 'maiz_amarillo');
+  ok('maiz_amarillo.p existe en la base', !!maiz && typeof maiz.p === 'number');
+  ok(`maiz_amarillo.p = ${maiz?.p} está en % de la MS (0 < p < 2)`,
+     maiz && maiz.p > 0 && maiz.p < 2);
+  const fosfato = ALIMENTOS_BASE.find((a) => a.id === 'fosfato_bicalcico');
+  ok(`fosfato_bicalcico.p = ${fosfato?.p} está en % (no en fracción)`,
+     fosfato && fosfato.p > 5 && fosfato.p < 30);
 }
 
 // ---------------------------------------------------------------------------
