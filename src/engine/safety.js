@@ -205,7 +205,7 @@ export const REGLAS = [
     id: 'V65', campo: 'proteinaMamiferoPct', min: null, max: 0, unidad: '% MS',
     fase: FASE.TODAS, sev: SEV.BLOCK,
     nombre: 'Proteína de mamífero', previene: 'Prohibición por encefalopatía espongiforme (BSE)',
-    fuente: 'FDA GFI #70', url: 'https://www.fda.gov/regulatory-information/search-fda-guidance-documents/cvm-gfi-70-small-entities-compliance-guide-feeders-ruminant-animals-without-farm-feed-mixing',
+    fuente: 'FDA GFI #70', url: 'https://www.fda.gov/regulatory-information/search-fda-guidance-documents/cvm-gfi-70-small-entities-compliance-guide-feeders-ruminant-animals-without-farm-feed-mix',
     mensaje: 'La harina de carne y hueso y la harina de sangre de mamífero están prohibidas para rumiantes. No se pueden usar.',
   },
 
@@ -215,7 +215,7 @@ export const REGLAS = [
     fase: FASE.TERM, sev: SEV.BLOCK,
     nombre: 'Azufre en dieta de alto concentrado', previene: 'Polioencefalomalacia (PEM)',
     fuente: 'UMN Extension', url: 'https://extension.umn.edu/agriculture/animals-and-livestock/beef/managing-sulfur-in-beef-cattle-feed-and-water',
-    mensaje: 'Azufre demasiado alto para una dieta con poco forraje. Produce polioencefalomalacia: el animal queda ciego, se descoordina y convulsiona. Cuidado con la burlanda, la melaza y el agua de pozo salina.',
+    mensaje: 'Azufre demasiado alto para una dieta con poco forraje. Produce polioencefalomalacia: el animal queda ciego, se descoordina y convulsiona. Cuidado con la burlanda, la melaza y el agua.',
   },
   {
     id: 'V72', campo: 'sPct', min: null, max: 0.40, unidad: '% MS',
@@ -260,11 +260,23 @@ export const REGLAS = [
     mensaje: 'Falta calcio en la dieta. Agregar carbonato de calcio o sal mineral.',
   },
   {
-    id: 'V93b', campo: 'pPct', min: 0.3, max: null, unidad: '% MS',
-    fase: [FASE.CREC, FASE.TERM], sev: SEV.WARN,
-    nombre: 'Fósforo mínimo', previene: 'Bajo consumo, mal crecimiento',
-    fuente: 'OSU Feedlot Primer', url: 'https://agnr.osu.edu/sites/agnr/files/imce/pdfs/Beef/feedlot_0.pdf',
-    mensaje: 'Falta fósforo en la dieta.',
+    id: 'V93b',
+    campo: 'pPct',
+    // UMBRAL OPERATIVO DEL MOTOR, no un valor oficial BR-CORTE.
+    // El requerimiento fisiológico real de BR-CORTE (cap. 9) para un Nelore
+    // de 350 kg creciendo 1 kg/d ronda 0.19 % MS. Este 0.22 % es un umbral
+    // de formulación con margen de seguridad. El valor final se ajusta por
+    // sistema productivo en limitesVigentes() de constraints.js.
+    min: 0.22,
+    max: null,
+    unidad: '% MS',
+    fase: [FASE.CREC, FASE.TERM],
+    sev: SEV.WARN,
+    nombre: 'Fósforo — umbral de formulación (confinamiento)',
+    previene: 'Bajo consumo, mal crecimiento, riesgo de pica',
+    fuente: 'Umbral operativo del motor. Requerimiento fisiológico base: BR-CORTE 2016 cap. 9',
+    url: 'https://brcorte.com.br/assets/book2016/en/c9.pdf',
+    mensaje: 'Advertencia nutricional: la dieta no alcanza el mínimo de fósforo recomendado para este sistema.',
   },
   {
     id: 'V92', campo: 'ratioCaP', min: 1.2, max: 6.0, unidad: 'relación',
@@ -292,7 +304,7 @@ export const REGLAS = [
     fase: FASE.TODAS, sev: SEV.BLOCK,
     nombre: 'Dosis de monensina', previene: 'Sobredosis: daño cardíaco y muerte',
     fuente: 'FDA', url: 'https://www.fda.gov/files/animal%20&%20veterinary/published/Monensin-Beef-Cattle-Blue-Bird-Label-(NADA-095-735---Type-C).pdf',
-    mensaje: 'La dosis de monensina está fuera de la etiqueta aprobada (50 a 480 mg por cabeza y por día; por encima de 360 ya no hay beneficio). La sobredosis daña el corazón. Y nunca dar a caballos: los mata.',
+    mensaje: 'La dosis de monensina está fuera de la etiqueta aprobada (50 a 480 mg por cabeza y por día; por encima de 360 ya no hay beneficio). La sobredosis daña el corazón. Y nunca dar a terneros.',
   },
   {
     id: 'V98', campo: 'vitAUiKg', min: 2200, max: null, unidad: 'UI/kg MS',
