@@ -448,35 +448,91 @@ function redondear(v) {
 
 /**
  * Score de riesgo de acidosis, 0 (seguro) a 100 (peligro).
- * No es una norma publicada: es un índice compuesto a partir de los cuatro
- * factores que la literatura identifica como determinantes (fibra efectiva,
- * almidón, forraje y presencia de ionóforo). Se declara como heurística para
- * que el usuario sepa que es un semáforo, no una medición.
+ * Heurística compuesta, NO es una norma publicada.
+ *
+ * Diferencias con la versión anterior:
+ *   - Umbrales de peNDF y forraje por sistema productivo.
+ *   - Considera azúcares (melaza, cachaza, caña) además de almidón.
+ *   - Penaliza la incertidumbre por almidón no declarado.
+ *   - El ionóforo reduce el score pero NUNCA lleva la dieta a "bajo"
+ *     si el peNDF está por debajo del mínimo del sistema.
+ *   - Devuelve los componentes del score para que la UI muestre por qué.
  */
-export function scoreAcidosis({ peNdfPct, almidonPct, forrajePct, tieneIonoforo, fase }) {
+export const SISTEMA = {
+  PASTORIL: 'pastoril',
+  SEMI_INTENSIVO: 'semiIntensivo',
+  FEEDLOT: 'feedlot',
+};
+
+export function scoreAcidosis({
+  peNdfPct, almidonPct, forrajePct,
+  azucaresPct = 0,
+  tieneIonoforo = false,
+  fase,
+  sistemaId = SISTEMA.FEEDLOT,
+  almidonDesconocido = false,
+}) {
   let score = 0;
+  const componentes = {
+    peNdf: 0, almidon: 0, azucares: 0, forraje: 0,
+    desconocido: 0, ionoforo: 0, fase: 0,
+  };
 
-  // Fibra efectiva: el factor más importante
-  if (peNdfPct < 5) score += 45;
-  else if (peNdfPct < 7) score += 32;
-  else if (peNdfPct < 10) score += 18;
-  else if (peNdfPct < 12) score += 8;
+  // ---- peNDF: umbral por sistema ----
+  const minPeNdf =
+    sistemaId === SISTEMA.FEEDLOT ? 8
+    : sistemaId === SISTEMA.SEMI_INTENSIVO ? 20
+    : 25;
 
-  // Almidón
-  if (almidonPct > 45) score += 25;
-  else if (almidonPct > 38) score += 16;
-  else if (almidonPct > 30) score += 9;
+  const deltaPeNdf = peNdfPct - minPeNdf;
+  if (deltaPeNdf < -8)       componentes.peNdf = 50;
+  else if (deltaPeNdf < -4)  componentes.peNdf = 35;
+  else if (deltaPeNdf < 0)   componentes.peNdf = 20;
+  else if (deltaPeNdf < 3)   componentes.peNdf = 8;
+  score += componentes.peNdf;
 
-  // Forraje
-  if (forrajePct < 5) score += 20;
-  else if (forrajePct < 10) score += 12;
-  else if (forrajePct < 15) score += 5;
+  // ---- Almidón ----
+  if (almidonPct > 45)       componentes.almidon = 25;
+  else if (almidonPct > 38)  componentes.almidon = 18;
+  else if (almidonPct > 30)  componentes.almidon = 10;
+  else if (almidonPct > 22)  componentes.almidon = 4;
+  score += componentes.almidon;
 
-  // El ionóforo estabiliza el pH ruminal
-  if (tieneIonoforo) score -= 10;
+  // ---- Azúcares (melaza, cachaza, caña) ----
+  if (azucaresPct > 15)      componentes.azucares = 20;
+  else if (azucaresPct > 10) componentes.azucares = 12;
+  else if (azucaresPct > 6)  componentes.azucares = 6;
+  score += componentes.azucares;
 
-  // En recepción el rumen no está adaptado: el mismo nivel de grano es más riesgoso
-  if (fase === FASE.RECEP) score += 10;
+  // ---- Forraje: umbral por sistema ----
+  const minForraje =
+    sistemaId === SISTEMA.FEEDLOT ? 5
+    : sistemaId === SISTEMA.SEMI_INTENSIVO ? 30
+    : 60;
+
+  const deltaForr = forrajePct - minForraje;
+  if (deltaForr < -15)       componentes.forraje = 20;
+  else if (deltaForr < -8)   componentes.forraje = 12;
+  else if (deltaForr < 0)    componentes.forraje = 5;
+  score += componentes.forraje;
+
+  // ---- Incertidumbre por almidón no declarado ----
+  if (almidonDesconocido) {
+    componentes.desconocido = 8;
+    score += 8;
+  }
+
+  // ---- Ionóforo ----
+  if (tieneIonoforo) {
+    componentes.ionoforo = -10;
+    score -= 10;
+  }
+
+  // ---- Fase de adaptación ----
+  if (fase === FASE.RECEP) {
+    componentes.fase = 15;
+    score += 15;
+  }
 
   score = Math.min(Math.max(score, 0), 100);
 
@@ -485,5 +541,12 @@ export function scoreAcidosis({ peNdfPct, almidonPct, forrajePct, tieneIonoforo,
   else if (score >= 40) nivel = 'alto';
   else if (score >= 20) nivel = 'moderado';
 
-  return { score, nivel };
+  // Regla de seguridad: si el peNDF está por debajo del mínimo del sistema
+  // y hay azúcares o almidón significativos, NUNCA reportar "bajo" aunque
+  // el ionóforo haya bajado el score.
+  const riesgoEstructural =
+    peNdfPct < minPeNdf - 2 && (azucaresPct > 8 || almidonPct > 25);
+  if (riesgoEstructural && nivel === 'bajo') nivel = 'moderado';
+
+  return { score, nivel, minPeNdf, minForraje, componentes, riesgoEstructural };
 }
