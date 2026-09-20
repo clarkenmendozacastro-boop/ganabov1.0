@@ -412,14 +412,19 @@ export function indicadoresDieta(alimentos, x, pv) {
   if (ms <= 0) return { msTotal: 0 };
   const pct = (campo) => (alimentos.reduce((s, a, i) => s + COEF[campo](a) * x[i], 0) / ms) * 100;
 
-  const caPct = pct('caPct');
-  const pPct = pct('pPct');
+const caPct = pct('caPct');
+const pPct = pct('pPct');
 
-  // Cuánta MS viene de concentrados que NO declaran almidón: el índice de
-  // acidosis está ciego en esa parte y hay que decirlo.
-  const msSinAlmidon = alimentos.reduce(
-    (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
-  );
+// Cuánta MS viene de concentrados que NO declaran almidón: el índice de
+// acidosis está ciego en esa parte y hay que decirlo.
+const msSinAlmidon = alimentos.reduce(
+  (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
+);
+
+// V59: cianuro expresado como CONCENTRACIÓN en mg/kg MS, no como porcentaje.
+// Por eso no se multiplica por 100 como el resto de los campos. La regla V59
+// lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
+const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
 
   return {
     msTotal: ms,
@@ -444,7 +449,7 @@ export function indicadoresDieta(alimentos, x, pv) {
     granoPctPv: (alimentos.reduce((s, a, i) => s + COEF.granoPctPv(a) * x[i], 0) / pv) * 100,
     ureaGPor100kgPv:
       (alimentos.reduce((s, a, i) => s + (a.id === 'urea' ? x[i] : 0), 0) * 1000) / (pv / 100),
-    almidonCiegoPct: (msSinAlmidon / ms) * 100,
+    almidonCiegoPct: (msSinAlmidon / ms) * 100, hcnMgKg,
   };
 }
 
