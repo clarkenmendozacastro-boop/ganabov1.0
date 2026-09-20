@@ -244,11 +244,24 @@ export function formularRacionAvanzada({
   // sal mineral y la urea, y ninguna ración podía corregir el calcio ni la
   // relación Ca:P.
   const esMineralOAditivo = (a) => a.categoria === 'mineral';
-  const sinDatos = alimentos.filter((a) => numOrNull(a.tdn) === null && !esMineralOAditivo(a));
-  alimentos = alimentos.filter((a) => numOrNull(a.tdn) !== null || esMineralOAditivo(a));
+  // Un alimento sin TDN tabulado solo se descarta si TAMPOCO se puede calcular
+  // por la sumativa de Weiss. Weiss necesita al menos PB y FDN, y NO funciona
+  // con grasas puras (más de 20 % de EE), donde la conversión de ácidos grasos
+  // da un TDN físicamente imposible (>100 %).
+  const puedeCalcularse = (a) =>
+    numOrNull(a.ndf) !== null &&
+    numOrNull(a.pb) !== null &&
+    numOrNull(a.ee) !== null &&
+    numOrNull(a.ee) < 20;
+  const sinDatos = alimentos.filter(
+    (a) => numOrNull(a.tdn) === null && !puedeCalcularse(a) && !esMineralOAditivo(a),
+  );
+  alimentos = alimentos.filter(
+    (a) => numOrNull(a.tdn) !== null || puedeCalcularse(a) || esMineralOAditivo(a),
+  );
   if (sinDatos.length) {
     alertas.push(
-      `${sinDatos.length} alimento(s) quedaron fuera del balanceo porque la fuente no publica su energía (TDN): ` +
+      `${sinDatos.length} alimento(s) quedaron fuera del balanceo porque la fuente no publica su energía (TDN) y tampoco tienen composición suficiente para calcularla: ` +
       `${sinDatos.map((a) => a.nombre).join(', ')}. Si tenés un análisis de laboratorio, cargalo y el motor los va a usar.`,
     );
   }
@@ -284,7 +297,12 @@ export function formularRacionAvanzada({
     .map((a) => corregirTdnEstimado(a))
     .map((a) => ({
       ...a,
-      energia: numOrNull(a.tdn) === null ? ENERGIA_CERO : perfilEnergetico(a),
+      // Solo los minerales reciben energía cero: no aportan energía y no
+      // tienen por qué pasar por la sumativa. Todos los demás van a
+      // perfilEnergetico, que usa el TDN tabulado si existe y Weiss si no.
+      // Si Weiss no puede calcular (le falta composición), devuelve
+      // `valido: false` y el filtro siguiente lo saca del balanceo.
+      energia: esMineralOAditivo(a) ? ENERGIA_CERO : perfilEnergetico(a),
     }))
     .filter((a) => a.energia?.valido)
     .map((a) => ({ ...a, em: a.energia.me }));
