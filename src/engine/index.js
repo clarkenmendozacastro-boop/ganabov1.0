@@ -1,4 +1,4 @@
-// src/engine/index.js
+ // src/engine/index.js
 // API pública del motor de raciones de GanaBov.
 //
 // Reemplaza a src/utils/nutricion.js manteniendo EXACTAMENTE la misma firma y
