@@ -347,14 +347,31 @@ export function construirRestricciones({
       name: 'urea <= 25 g/100 kg PV (V39)', campo: 'ureaGPor100kgPv', severidad: SEV.BLOCK,
     });
     // V38: la urea no puede aportar más del 33 % de la PB total.
-    rows.push({
-      coef: alimentos.map((a, i) => (i === iUrea ? v(a.pb) / 100 * (1 - 0.33) : -v(a.pb) / 100 * 0.33)),
-      op: '<=', rhs: 0,
-      name: 'urea <= 33% de la PB (V38)', campo: 'ureaPctDePb', severidad: SEV.BLOCK,
-    });
-  }
+  rows.push({
+    coef: alimentos.map((a, i) => (i === iUrea ? v(a.pb) / 100 * (1 - 0.33) : -v(a.pb) / 100 * 0.33)),
+    op: '<=', rhs: 0,
+    name: 'urea <= 33% de la PB (V38)', campo: 'ureaPctDePb', severidad: SEV.BLOCK,
+  });
+}
 
-  // --- 9. Criterios de PRACTICIDAD -----------------------------------------
+// --- 8b. Cianuro (V59) ---------------------------------------------------
+// V59 pide una CONCENTRACIÓN máxima (mg/kg MS), no un porcentaje. La fila
+// se linealiza como Σ x_i * (hcn_i - tope) <= 0, que es matemáticamente
+// equivalente a (Σ x_i * hcn_i) / (Σ x_i) <= tope.
+// Solo se arma si algún alimento declara el dato de cianuro: sin dato, la
+// restricción es trivialmente satisfecha y no aporta nada.
+const TOPE_HCN_MG_KG = 100;
+const tieneHcn = alimentos.some((a) => numOrNull(a.hcn) !== null);
+if (tieneHcn) {
+  rows.push({
+    coef: alimentos.map((a) => v(a.hcn) - TOPE_HCN_MG_KG),
+    op: '<=', rhs: 0,
+    name: `HCN <= ${TOPE_HCN_MG_KG} mg/kg MS (V59)`,
+    campo: 'hcnMgKg', limitePct: TOPE_HCN_MG_KG, severidad: SEV.BLOCK,
+  });
+}
+
+// --- 9. Criterios de PRACTICIDAD -----------------------------------------
   // ATENCIÓN: esto NO sale de una norma publicada. Son decisiones de
   // ingeniería para que la ración sea usable y no un óptimo matemático raro.
   // Sin estas filas el programa lineal hace cosas correctas en el papel y
