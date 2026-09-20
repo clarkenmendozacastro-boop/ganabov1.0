@@ -1999,7 +1999,7 @@ export const ALIMENTOS_BASE = [
     almidon: 80.4,
     ee: 0.7,
     cenizas: 3.9,
-    hcn 62,
+    hcn: 62,
     ca: 0.17,
     p: 0.11,
     s: null,
