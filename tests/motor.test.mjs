@@ -621,7 +621,110 @@ const UMBRALES_SISTEMA = {
     }
   }
 }
+// ---------------------------------------------------------------------------
+console.log('\n13. V59: cianuro en yuca (mg/kg MS, no %)');
+// ---------------------------------------------------------------------------
 
+// 13a. La base tiene los valores de HCN cargados.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const yucaRaiz = ALIMENTOS_BASE.find((a) => a.id === 'yuca_raiz');
+  const yucaSeca = ALIMENTOS_BASE.find((a) => a.id === 'yuca_seca');
+
+  ok('yuca_raiz.hcn existe y es número', yucaRaiz && typeof yucaRaiz.hcn === 'number');
+  ok('yuca_seca.hcn existe y es número', yucaSeca && typeof yucaSeca.hcn === 'number');
+  ok(`yuca_raiz.hcn = ${yucaRaiz?.hcn} está en rango esperado (100–250)`,
+     yucaRaiz && yucaRaiz.hcn > 100 && yucaRaiz.hcn < 250);
+  ok(`yuca_seca.hcn = ${yucaSeca?.hcn} está en rango esperado (30–95)`,
+     yucaSeca && yucaSeca.hcn > 30 && yucaSeca.hcn < 95);
+}
+
+// 13b. La fila V59 se construye cuando hay yuca en la lista de alimentos.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'yuca_raiz', categoria: 'energético', ndf: 3.7, pef: 0, p: 0.04, ca: 0.1,
+      em: 3.07, pb: 2.2, almidon: null, ee: 0.6, s: 0, mg: 0, k: 0, max_inclusion_pct: null,
+      hcn: 175 },
+  ];
+  const base = {
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  };
+  const { rows } = construirRestricciones(base);
+  const filaHcn = rows.find((r) => r.campo === 'hcnMgKg');
+
+  ok('LP con yuca: la fila V59 existe', !!filaHcn);
+  ok('LP con yuca: la fila V59 tiene op "<="', filaHcn && filaHcn.op === '<=');
+  ok('LP con yuca: la fila V59 tiene severidad BLOCK', filaHcn && filaHcn.severidad === 'BLOCK');
+  ok('LP con yuca: la fila V59 tiene rhs 0', filaHcn && filaHcn.rhs === 0);
+  ok('LP con yuca: la fila V59 nombra V59', filaHcn && filaHcn.name.includes('V59'));
+}
+
+// 13c. Sin ningún alimento con HCN, la fila no se construye.
+{
+  const alimentos = [
+    { id: 'forraje_y', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_y', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaHcn = rows.find((r) => r.campo === 'hcnMgKg');
+  ok('LP sin alimentos con HCN: la fila V59 NO se emite', !filaHcn);
+}
+
+// 13d. indicadoresDieta() calcula hcnMgKg con la unidad correcta.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  // 100 % de un alimento con hcn = 175. Resultado esperado: 175 mg/kg MS.
+  const alimentos = [
+    { id: 'yuca_solo', categoria: 'energético', ndf: 0, pef: 0, p: 0, ca: 0,
+      em: 3, pb: 2, almidon: 0, ee: 0, s: 0, mg: 0, k: 0, hcn: 175, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('indicadoresDieta expone hcnMgKg', typeof ind.hcnMgKg === 'number');
+  ok(`100 % de yuca (hcn=175) → 175 mg/kg MS (obtenido ${ind.hcnMgKg})`,
+     Math.abs(ind.hcnMgKg - 175) < 1e-6);
+
+  // Mezcla 50/50: yuca con hcn 175 y maíz sin hcn.
+  const alimentos2 = [
+    ...alimentos,
+    { id: 'maiz_z', categoria: 'energético', ndf: 10, pef: 0, p: 0.3, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, hcn: null, max_inclusion_pct: null },
+  ];
+  const ind2 = indicadoresDieta(alimentos2, [2.5, 2.5], 350);
+  ok(`50 % yuca + 50 % maíz → 87.5 mg/kg MS (obtenido ${ind2.hcnMgKg})`,
+     Math.abs(ind2.hcnMgKg - 87.5) < 1e-6);
+}
+
+// 13e. Sin yuca en la dieta, el HCN es 0.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'forraje_z', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, hcn: null, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('Sin alimento con HCN, hcnMgKg es 0', ind.hcnMgKg === 0);
+}
+
+// 13f. Regresión: una ración sin yuca no rompe V59.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración sin yuca: V59 no aparece como bloqueo',
+       !r.seguridad.bloqueos.some((b) => b.id === 'V59'));
+  }
+}
 // ---------------------------------------------------------------------------
 console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
