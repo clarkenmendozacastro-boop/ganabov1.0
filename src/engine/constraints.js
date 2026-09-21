@@ -443,6 +443,10 @@ const msSinAlmidon = alimentos.reduce(
 // lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
 const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
 
+// V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
+// base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
+// El factor 1e6 convierte kg de MS a mg de MS (1 kg = 1e6 mg).
+const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
   return {
     msTotal: ms,
     msPctPv: (ms / pv) * 100,
@@ -466,8 +470,11 @@ const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
     granoPctPv: (alimentos.reduce((s, a, i) => s + COEF.granoPctPv(a) * x[i], 0) / pv) * 100,
     ureaGPor100kgPv:
       (alimentos.reduce((s, a, i) => s + (a.id === 'urea' ? x[i] : 0), 0) * 1000) / (pv / 100),
-    almidonCiegoPct: (msSinAlmidon / ms) * 100, hcnMgKg,
+    almidonCiegoPct: (msSinAlmidon / ms) * 100,
+  hcnMgKg,
+  gosipolPpm,
+};
   };
-}
+
 
 export default { construirRestricciones, indicadoresDieta, limitesVigentes, COEF };
