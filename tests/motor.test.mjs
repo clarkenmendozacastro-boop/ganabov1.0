@@ -1041,6 +1041,115 @@ console.log('\n14. V46: gosipol en semilla y torta de algodón (ppm, no %)');
   }
 }
 // ---------------------------------------------------------------------------
+console.log('\n15. Azúcares solubles: campo en la base + cálculo en indicadoresDieta');
+// ---------------------------------------------------------------------------
+
+// 15a. La base tiene los 9 valores de azúcares cargados.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const esperados = {
+    'melaza_caña': 55, 'cana_azucar': 12, 'pulpa_citrica': 22,
+    'cachaza': 5, 'yuca_raiz': 2, 'yuca_seca': 2,
+    'bagazo_cana': 1, 'maiz_amarillo': 1, 'sorgo_grano': 1,
+  };
+  for (const [id, valor] of Object.entries(esperados)) {
+    const a = ALIMENTOS_BASE.find((x) => x.id === id);
+    ok(`${id}.azucares = ${a?.azucares} (esperado ${valor})`,
+       a && a.azucares === valor);
+  }
+
+  // Los alimentos SIN dato no deben tener la propiedad (undefined).
+  const maiz = ALIMENTOS_BASE.find((x) => x.id === 'pasto_mombasa');
+  ok('pasto_mombasa.azucares es undefined (no inventado)',
+     maiz && maiz.azucares === undefined);
+}
+
+// 15b. indicadoresDieta() calcula azucaresPct correctamente.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  // 100 % melaza (azucares 55) → 55 % de azúcares.
+  const alimentos = [
+    { id: 'melaza_sola', categoria: 'energético', ndf: 0.8, pef: 0, p: 0.07, ca: 0.92,
+      em: 2.24, pb: 5.5, almidon: null, azucares: 55, ee: 1, s: 0, mg: 0.4, k: 5.1,
+      max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('indicadoresDieta expone azucaresPct', typeof ind.azucaresPct === 'number');
+  ok(`100 % melaza (55 %) → 55 (obtenido ${ind.azucaresPct})`,
+     Math.abs(ind.azucaresPct - 55) < 1e-6);
+
+  // Mezcla 2 kg melaza + 5 kg maíz (1 % azúcares): (2*55 + 5*1) / 7 = 16.43 %.
+  const alimentos2 = [
+    ...alimentos,
+    { id: 'maiz_z', categoria: 'energético', ndf: 12.7, pef: 0, p: 0.32, ca: 0.02,
+      em: 3.37, pb: 10.5, almidon: 72.5, azucares: 1, ee: 4.4, s: 0, mg: 0.13, k: 0.37,
+      max_inclusion_pct: null },
+  ];
+  const ind2 = indicadoresDieta(alimentos2, [2, 5], 350);
+  const esperado = (2 * 55 + 5 * 1) / 7;
+  ok(`2 kg melaza + 5 kg maíz → ${esperado.toFixed(3)} % (obtenido ${ind2.azucaresPct.toFixed(3)})`,
+     Math.abs(ind2.azucaresPct - esperado) < 1e-6);
+}
+
+// 15c. Sin alimentos con azúcares declarados, azucaresPct es 0.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'forraje_z', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5,
+      azucares: undefined, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('Sin azúcares declarados, azucaresPct es 0 (no NaN)', ind.azucaresPct === 0);
+}
+
+// 15d. El score de acidosis sube cuando la dieta tiene mucha melaza.
+{
+  // Misma composición base, sin y con azúcares.
+  const sinAzucar = scoreAcidosis({
+    peNdfPct: 22, almidonPct: 20, forrajePct: 30,
+    azucaresPct: 0, tieneIonoforo: false, fase: 'CREC', sistemaId: 'semiIntensivo',
+  });
+  const conAzucar = scoreAcidosis({
+    peNdfPct: 22, almidonPct: 20, forrajePct: 30,
+    azucaresPct: 12, tieneIonoforo: false, fase: 'CREC', sistemaId: 'semiIntensivo',
+  });
+  ok(`Score con 12 % azúcares (${conAzucar.score}) mayor que sin azúcares (${sinAzucar.score})`,
+     conAzucar.score > sinAzucar.score);
+  ok('El componente azucares activa con 12 % (>10 → +12)',
+     conAzucar.componentes.azucares === 12);
+  ok('El componente azucares queda en 0 sin azúcares',
+     sinAzucar.componentes.azucares === 0);
+}
+
+// 15e. Umbrales del componente azucares (6 / 10 / 15 %).
+{
+  const caso = (pct) => scoreAcidosis({
+    peNdfPct: 22, almidonPct: 20, forrajePct: 30,
+    azucaresPct: pct, tieneIonoforo: false, fase: 'CREC', sistemaId: 'semiIntensivo',
+  }).componentes.azucares;
+
+  ok('azucares = 3 % → componente 0', caso(3) === 0);
+  ok('azucares = 8 % → componente 6', caso(8) === 6);
+  ok('azucares = 12 % → componente 12', caso(12) === 12);
+  ok('azucares = 20 % → componente 20', caso(20) === 20);
+}
+
+// 15f. Regresión: una ración sin melaza no rompe nada.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración sin melaza: score_detalle sigue existiendo',
+       r.score_detalle && typeof r.score_detalle.score === 'number');
+    ok('Ración sin melaza: componente azucares es 0',
+       r.score_detalle.componentes.azucares === 0);
+    ok('Ración sin melaza: sin bloqueos de seguridad',
+       r.seguridad.bloqueos.length === 0);
+  }
+}
+// ---------------------------------------------------------------------------
 console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
 console.log('====================================================\n');

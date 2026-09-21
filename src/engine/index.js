@@ -475,13 +475,12 @@ export function formularRacionAvanzada({
     { sistemaId },
   );
   const score = scoreAcidosis({
-    peNdfPct: indicFinal.peNdfPct,
-    almidonPct: indicFinal.almidonPct,
-    forrajePct: indicFinal.forrajePct,
-    // TODO: agregar azucaresPct real a indicadoresDieta(); mientras tanto
-    // queda en 0 y el score NO se debe presentar como completo: el
-    // componente de azúcares siempre evalúa a 0 hoy.
-    azucaresPct: indicFinal.azucaresPct ?? 0,
+  peNdfPct: indicFinal.peNdfPct,
+  almidonPct: indicFinal.almidonPct,
+  forrajePct: indicFinal.forrajePct,
+  // Azúcares solubles en % de la MS. Ya se calculan en indicadoresDieta().
+  // El score de acidosis usa este dato para el componente azucares.
+  azucaresPct: indicFinal.azucaresPct .
     tieneIonoforo,
     fase: faseSeg,
     // sistemaId es el fix principal: sin él, scoreAcidosis() caía por

@@ -79,6 +79,7 @@ export const COEF = {
   ndfPct: (a) => v(a.ndf) / 100,
   fndfPct: (a) => (esForraje(a) ? v(a.ndf) / 100 : 0),
   almidonPct: (a) => v(a.almidon) / 100,
+  azucaresPct: (a) => v(a.azucares) /100,
   eePct: (a) => v(a.ee) / 100,
   sPct: (a) => v(a.s) / 100,
   mgPct: (a) => v(a.mg) / 100,
@@ -442,11 +443,17 @@ export function indicadoresDieta(alimentos, x, pv) {
   if (ms <= 0) return { msTotal: 0 };
   const pct = (campo) => (alimentos.reduce((s, a, i) => s + COEF[campo](a) * x[i], 0) / ms) * 100;
 
-  const caPct = pct('caPct');
-  const pPct = pct('pPct');
+const caPct = pct('caPct');
+const pPct = pct('pPct');
 
-  // Cuánta MS viene de concentrados que NO declaran almidón: el índice de
-  // acidosis está ciego en esa parte y hay que decirlo.
+// Azúcares solubles como % de la MS. Alimenta el componente azucares
+// del score de acidosis: los azúcares fermentan más rápido que el almidón
+// y bajan el pH ruminal antes. Solo 9 alimentos declaran el dato; el resto
+// no aporta (no es que tengan cero real, es que no se sabe).
+const azucaresPct = pct('azucaresPct');
+
+// Cuánta MS viene de concentrados que NO declaran almidón: el índice de
+// acidosis está ciego en esa parte y hay que decirlo.
   const msSinAlmidon = alimentos.reduce(
     (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
   );
@@ -467,6 +474,7 @@ export function indicadoresDieta(alimentos, x, pv) {
     ndfPct: pct('ndfPct'),
     fndfPct: pct('fndfPct'),
     almidonPct: pct('almidonPct'),
+    azucaresPct,
     eePct: pct('eePct'),
     sPct: pct('sPct'),
     mgPct: pct('mgPct'),
