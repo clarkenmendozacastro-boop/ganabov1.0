@@ -726,6 +726,321 @@ console.log('\n13. V59: cianuro en yuca (mg/kg MS, no %)');
   }
 }
 // ---------------------------------------------------------------------------
+console.log('\n14. V46: gosipol en semilla y torta de algodón (ppm, no %)');
+// ---------------------------------------------------------------------------
+
+// 14a. La base tiene los valores de gosipol cargados.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const semilla = ALIMENTOS_BASE.find((a) => a.id === 'semilla_algodon');
+  const torta = ALIMENTOS_BASE.find((a) => a.id === 'torta_algodon');
+
+  ok('semilla_algodon.gosipol existe y es número', semilla && typeof semilla.gosipol === 'number');
+  ok('torta_algodon.gosipol existe y es número', torta && typeof torta.gosipol === 'number');
+  ok(`semilla_algodon.gosipol = ${semilla?.gosipol} en rango KSU (450–900)`,
+     semilla && semilla.gosipol >= 450 && semilla.gosipol <= 900);
+  ok(`torta_algodon.gosipol = ${torta?.gosipol} en rango KSU (400–1000)`,
+     torta && torta.gosipol >= 400 && torta.gosipol <= 1000);
+}
+
+// 14b. La fila V46 se construye cuando hay algodón en la lista.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'semilla_algodon', categoria: 'proteico', ndf: 48.6, pef: 0, p: 0.59, ca: 0.15,
+      em: 3.115, pb: 21.8, almidon: 2.1, ee: 19.7, s: 0, mg: 0.36, k: 1.2, max_inclusion_pct: 25,
+      gosipol: 675 },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+
+  ok('LP con semilla de algodón: la fila V46 existe', !!filaG);
+  ok('LP con semilla de algodón: la fila V46 tiene op "<="', filaG && filaG.op === '<=');
+  ok('LP con semilla de algodón: la fila V46 tiene severidad BLOCK', filaG && filaG.severidad === 'BLOCK');
+  ok('LP con semilla de algodón: la fila V46 tiene rhs 0', filaG && filaG.rhs === 0);
+  ok('LP con semilla de algodón: la fila V46 nombra V46', filaG && filaG.name.includes('V46'));
+}
+
+// 14c. Sin ningún alimento con gosipol, la fila no se construye.
+{
+  const alimentos = [
+    { id: 'forraje_y', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_y', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+  ok('LP sin alimentos con gosipol: la fila V46 NO se emite', !filaG);
+}
+
+// 14d. indicadoresDieta() calcula gosipolPpm con la unidad correcta.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'semilla_sola', categoria: 'proteico', ndf: 0, pef: 0, p: 0, ca: 0,
+      em: 3, pb: 20, almidon: 0, ee: 20, s: 0, mg: 0, k: 0, gosipol: 675, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('indicadoresDieta expone gosipolPpm', typeof ind.gosipolPpm === 'number');
+  ok(`100 % semilla (675 ppm) → 675 ppm (obtenido ${ind.gosipolPpm})`,
+     Math.abs(ind.gosipolPpm - 675) < 1e-6);
+
+  const alimentos2 = [
+    ...alimentos,
+    { id: 'maiz_z', categoria: 'energético', ndf: 10, pef: 0, p: 0.3, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind2 = indicadoresDieta(alimentos2, [1, 4], 350);
+  ok(`20 % semilla + 80 % maíz → 135 ppm (obtenido ${ind2.gosipolPpm})`,
+     Math.abs(ind2.gosipolPpm - 135) < 1e-6);
+
+  const ind3 = indicadoresDieta(alimentos2, [1.5, 3.5], 350);
+  ok(`30 % semilla → 202.5 ppm (por encima de V46=${200}) → ${ind3.gosipolPpm}`,
+     Math.abs(ind3.gosipolPpm - 202.5) < 1e-6);
+}
+
+// 14e. Sin algodón en la dieta, el gosipol es 0.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'forraje_z', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('Sin alimento con gosipol, gosipolPpm es 0', ind.gosipolPpm === 0);
+}
+
+// 14f. Regresión: una ración sin algodón no dispara V46.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración sin algodón: V46 no aparece como bloqueo',
+       !r.seguridad.bloqueos.some((b) => b.id === 'V46'));
+  }
+}
+// ---------------------------------------------------------------------------
+console.log('\n14. V46: gosipol en semilla y torta de algodón (ppm, no %)');
+// ---------------------------------------------------------------------------
+
+// 14a. La base tiene los valores de gosipol cargados.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const semilla = ALIMENTOS_BASE.find((a) => a.id === 'semilla_algodon');
+  const torta = ALIMENTOS_BASE.find((a) => a.id === 'torta_algodon');
+
+  ok('semilla_algodon.gosipol existe y es número', semilla && typeof semilla.gosipol === 'number');
+  ok('torta_algodon.gosipol existe y es número', torta && typeof torta.gosipol === 'number');
+  ok(`semilla_algodon.gosipol = ${semilla?.gosipol} en rango KSU (450–900)`,
+     semilla && semilla.gosipol >= 450 && semilla.gosipol <= 900);
+  ok(`torta_algodon.gosipol = ${torta?.gosipol} en rango KSU (400–1000)`,
+     torta && torta.gosipol >= 400 && torta.gosipol <= 1000);
+}
+
+// 14b. La fila V46 se construye cuando hay algodón en la lista.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'semilla_algodon', categoria: 'proteico', ndf: 48.6, pef: 0, p: 0.59, ca: 0.15,
+      em: 3.115, pb: 21.8, almidon: 2.1, ee: 19.7, s: 0, mg: 0.36, k: 1.2, max_inclusion_pct: 25,
+      gosipol: 675 },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+
+  ok('LP con semilla de algodón: la fila V46 existe', !!filaG);
+  ok('LP con semilla de algodón: la fila V46 tiene op "<="', filaG && filaG.op === '<=');
+  ok('LP con semilla de algodón: la fila V46 tiene severidad BLOCK', filaG && filaG.severidad === 'BLOCK');
+  ok('LP con semilla de algodón: la fila V46 tiene rhs 0', filaG && filaG.rhs === 0);
+  ok('LP con semilla de algodón: la fila V46 nombra V46', filaG && filaG.name.includes('V46'));
+}
+
+// 14c. Sin ningún alimento con gosipol, la fila no se construye.
+{
+  const alimentos = [
+    { id: 'forraje_y', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_y', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+  ok('LP sin alimentos con gosipol: la fila V46 NO se emite', !filaG);
+}
+
+// 14d. indicadoresDieta() calcula gosipolPpm con la unidad correcta.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'semilla_sola', categoria: 'proteico', ndf: 0, pef: 0, p: 0, ca: 0,
+      em: 3, pb: 20, almidon: 0, ee: 20, s: 0, mg: 0, k: 0, gosipol: 675, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('indicadoresDieta expone gosipolPpm', typeof ind.gosipolPpm === 'number');
+  ok(`100 % semilla (675 ppm) → 675 ppm (obtenido ${ind.gosipolPpm})`,
+     Math.abs(ind.gosipolPpm - 675) < 1e-6);
+
+  const alimentos2 = [
+    ...alimentos,
+    { id: 'maiz_z', categoria: 'energético', ndf: 10, pef: 0, p: 0.3, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind2 = indicadoresDieta(alimentos2, [1, 4], 350);
+  ok(`20 % semilla + 80 % maíz → 135 ppm (obtenido ${ind2.gosipolPpm})`,
+     Math.abs(ind2.gosipolPpm - 135) < 1e-6);
+
+  const ind3 = indicadoresDieta(alimentos2, [1.5, 3.5], 350);
+  ok(`30 % semilla → 202.5 ppm (por encima de V46=${200}) → ${ind3.gosipolPpm}`,
+     Math.abs(ind3.gosipolPpm - 202.5) < 1e-6);
+}
+
+// 14e. Sin algodón en la dieta, el gosipol es 0.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'forraje_z', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('Sin alimento con gosipol, gosipolPpm es 0', ind.gosipolPpm === 0);
+}
+
+// 14f. Regresión: una ración sin algodón no dispara V46.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración sin algodón: V46 no aparece como bloqueo',
+       !r.seguridad.bloqueos.some((b) => b.id === 'V46'));
+  }
+}
+// ---------------------------------------------------------------------------
+console.log('\n14. V46: gosipol en semilla y torta de algodón (ppm, no %)');
+// ---------------------------------------------------------------------------
+
+// 14a. La base tiene los valores de gosipol cargados.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const semilla = ALIMENTOS_BASE.find((a) => a.id === 'semilla_algodon');
+  const torta = ALIMENTOS_BASE.find((a) => a.id === 'torta_algodon');
+
+  ok('semilla_algodon.gosipol existe y es número', semilla && typeof semilla.gosipol === 'number');
+  ok('torta_algodon.gosipol existe y es número', torta && typeof torta.gosipol === 'number');
+  ok(`semilla_algodon.gosipol = ${semilla?.gosipol} en rango KSU (450–900)`,
+     semilla && semilla.gosipol >= 450 && semilla.gosipol <= 900);
+  ok(`torta_algodon.gosipol = ${torta?.gosipol} en rango KSU (400–1000)`,
+     torta && torta.gosipol >= 400 && torta.gosipol <= 1000);
+}
+
+// 14b. La fila V46 se construye cuando hay algodón en la lista.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'semilla_algodon', categoria: 'proteico', ndf: 48.6, pef: 0, p: 0.59, ca: 0.15,
+      em: 3.115, pb: 21.8, almidon: 2.1, ee: 19.7, s: 0, mg: 0.36, k: 1.2, max_inclusion_pct: 25,
+      gosipol: 675 },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+
+  ok('LP con semilla de algodón: la fila V46 existe', !!filaG);
+  ok('LP con semilla de algodón: la fila V46 tiene op "<="', filaG && filaG.op === '<=');
+  ok('LP con semilla de algodón: la fila V46 tiene severidad BLOCK', filaG && filaG.severidad === 'BLOCK');
+  ok('LP con semilla de algodón: la fila V46 tiene rhs 0', filaG && filaG.rhs === 0);
+  ok('LP con semilla de algodón: la fila V46 nombra V46', filaG && filaG.name.includes('V46'));
+}
+
+// 14c. Sin ningún alimento con gosipol, la fila no se construye.
+{
+  const alimentos = [
+    { id: 'forraje_y', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.20, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_y', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaG = rows.find((r) => r.campo === 'gosipolPpm');
+  ok('LP sin alimentos con gosipol: la fila V46 NO se emite', !filaG);
+}
+
+// 14d. indicadoresDieta() calcula gosipolPpm con la unidad correcta.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'semilla_sola', categoria: 'proteico', ndf: 0, pef: 0, p: 0, ca: 0,
+      em: 3, pb: 20, almidon: 0, ee: 20, s: 0, mg: 0, k: 0, gosipol: 675, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('indicadoresDieta expone gosipolPpm', typeof ind.gosipolPpm === 'number');
+  ok(`100 % semilla (675 ppm) → 675 ppm (obtenido ${ind.gosipolPpm})`,
+     Math.abs(ind.gosipolPpm - 675) < 1e-6);
+
+  const alimentos2 = [
+    ...alimentos,
+    { id: 'maiz_z', categoria: 'energético', ndf: 10, pef: 0, p: 0.3, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind2 = indicadoresDieta(alimentos2, [1, 4], 350);
+  ok(`20 % semilla + 80 % maíz → 135 ppm (obtenido ${ind2.gosipolPpm})`,
+     Math.abs(ind2.gosipolPpm - 135) < 1e-6);
+
+  const ind3 = indicadoresDieta(alimentos2, [1.5, 3.5], 350);
+  ok(`30 % semilla → 202.5 ppm (por encima de V46=${200}) → ${ind3.gosipolPpm}`,
+     Math.abs(ind3.gosipolPpm - 202.5) < 1e-6);
+}
+
+// 14e. Sin algodón en la dieta, el gosipol es 0.
+{
+  const { indicadoresDieta } = await import('../src/engine/constraints.js');
+  const alimentos = [
+    { id: 'forraje_z', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, gosipol: null, max_inclusion_pct: null },
+  ];
+  const ind = indicadoresDieta(alimentos, [5], 350);
+  ok('Sin alimento con gosipol, gosipolPpm es 0', ind.gosipolPpm === 0);
+}
+
+// 14f. Regresión: una ración sin algodón no dispara V46.
+{
+  const r = formularRacionAvanzada({
+    pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración sin algodón: V46 no aparece como bloqueo',
+       !r.seguridad.bloqueos.some((b) => b.id === 'V46'));
+  }
+}
+// ---------------------------------------------------------------------------
 console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
 console.log('====================================================\n');

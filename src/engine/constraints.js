@@ -154,10 +154,6 @@ export function limitesVigentes(fase, contexto = {}, opts = {}) {
     //     sistema es desconocido, pMinVigente devuelve null y V93b queda sin
     //     límite en el LP. No hay fallback a 0.22 acá: el silencio sería
     //     peor que la ausencia.
-    //
-    // numOrNull y no Number.isFinite(Number(x)): una regla con max: null
-    // (o sea, "sin techo") se leía como techo = 0 y volvía infactible
-    // todo el problema.
     let rMin;
     if (r.id === 'V93b') {
       rMin = sistemaId ? pMinVigente({ sistemaId }) : null;
@@ -347,31 +343,48 @@ export function construirRestricciones({
       name: 'urea <= 25 g/100 kg PV (V39)', campo: 'ureaGPor100kgPv', severidad: SEV.BLOCK,
     });
     // V38: la urea no puede aportar más del 33 % de la PB total.
-  rows.push({
-    coef: alimentos.map((a, i) => (i === iUrea ? v(a.pb) / 100 * (1 - 0.33) : -v(a.pb) / 100 * 0.33)),
-    op: '<=', rhs: 0,
-    name: 'urea <= 33% de la PB (V38)', campo: 'ureaPctDePb', severidad: SEV.BLOCK,
-  });
-}
+    rows.push({
+      coef: alimentos.map((a, i) => (i === iUrea ? v(a.pb) / 100 * (1 - 0.33) : -v(a.pb) / 100 * 0.33)),
+      op: '<=', rhs: 0,
+      name: 'urea <= 33% de la PB (V38)', campo: 'ureaPctDePb', severidad: SEV.BLOCK,
+    });
+  }
 
-// --- 8b. Cianuro (V59) ---------------------------------------------------
-// V59 pide una CONCENTRACIÓN máxima (mg/kg MS), no un porcentaje. La fila
-// se linealiza como Σ x_i * (hcn_i - tope) <= 0, que es matemáticamente
-// equivalente a (Σ x_i * hcn_i) / (Σ x_i) <= tope.
-// Solo se arma si algún alimento declara el dato de cianuro: sin dato, la
-// restricción es trivialmente satisfecha y no aporta nada.
-const TOPE_HCN_MG_KG = 100;
-const tieneHcn = alimentos.some((a) => numOrNull(a.hcn) !== null);
-if (tieneHcn) {
-  rows.push({
-    coef: alimentos.map((a) => v(a.hcn) - TOPE_HCN_MG_KG),
-    op: '<=', rhs: 0,
-    name: `HCN <= ${TOPE_HCN_MG_KG} mg/kg MS (V59)`,
-    campo: 'hcnMgKg', limitePct: TOPE_HCN_MG_KG, severidad: SEV.BLOCK,
-  });
-}
+  // --- 8b. Cianuro (V59) ---------------------------------------------------
+  // V59 pide una CONCENTRACIÓN máxima (mg/kg MS), no un porcentaje. La fila
+  // se linealiza como Σ x_i * (hcn_i - tope) <= 0, que es matemáticamente
+  // equivalente a (Σ x_i * hcn_i) / (Σ x_i) <= tope.
+  // Solo se arma si algún alimento declara el dato de cianuro: sin dato, la
+  // restricción es trivialmente satisfecha y no aporta nada.
+  const TOPE_HCN_MG_KG = 100;
+  const tieneHcn = alimentos.some((a) => numOrNull(a.hcn) !== null);
+  if (tieneHcn) {
+    rows.push({
+      coef: alimentos.map((a) => v(a.hcn) - TOPE_HCN_MG_KG),
+      op: '<=', rhs: 0,
+      name: `HCN <= ${TOPE_HCN_MG_KG} mg/kg MS (V59)`,
+      campo: 'hcnMgKg', limitePct: TOPE_HCN_MG_KG, severidad: SEV.BLOCK,
+    });
+  }
 
-// --- 9. Criterios de PRACTICIDAD -----------------------------------------
+  // --- 8c. Gosipol (V46) ---------------------------------------------------
+  // V46 exige un máximo de 200 ppm de gosipol libre en la ración completa.
+  // La base guarda el gosipol del ingrediente PURO (semilla 675 ppm, torta
+  // 700 ppm); la fila del LP obliga a que la CONCENTRACIÓN final no supere
+  // el tope. Misma linealización que V59:
+  //   Σ x_i * (gosipol_i - 200) <= 0  =>  gosipolPpm <= 200
+  const TOPE_GOSIPOL_PPM = 200;
+  const tieneGosipol = alimentos.some((a) => numOrNull(a.gosipol) !== null);
+  if (tieneGosipol) {
+    rows.push({
+      coef: alimentos.map((a) => v(a.gosipol) - TOPE_GOSIPOL_PPM),
+      op: '<=', rhs: 0,
+      name: `Gosipol <= ${TOPE_GOSIPOL_PPM} ppm (V46)`,
+      campo: 'gosipolPpm', limitePct: TOPE_GOSIPOL_PPM, severidad: SEV.BLOCK,
+    });
+  }
+
+  // --- 9. Criterios de PRACTICIDAD -----------------------------------------
   // ATENCIÓN: esto NO sale de una norma publicada. Son decisiones de
   // ingeniería para que la ración sea usable y no un óptimo matemático raro.
   // Sin estas filas el programa lineal hace cosas correctas en el papel y
@@ -429,24 +442,24 @@ export function indicadoresDieta(alimentos, x, pv) {
   if (ms <= 0) return { msTotal: 0 };
   const pct = (campo) => (alimentos.reduce((s, a, i) => s + COEF[campo](a) * x[i], 0) / ms) * 100;
 
-const caPct = pct('caPct');
-const pPct = pct('pPct');
+  const caPct = pct('caPct');
+  const pPct = pct('pPct');
 
-// Cuánta MS viene de concentrados que NO declaran almidón: el índice de
-// acidosis está ciego en esa parte y hay que decirlo.
-const msSinAlmidon = alimentos.reduce(
-  (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
-);
+  // Cuánta MS viene de concentrados que NO declaran almidón: el índice de
+  // acidosis está ciego en esa parte y hay que decirlo.
+  const msSinAlmidon = alimentos.reduce(
+    (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
+  );
 
-// V59: cianuro expresado como CONCENTRACIÓN en mg/kg MS, no como porcentaje.
-// Por eso no se multiplica por 100 como el resto de los campos. La regla V59
-// lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
-const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
+  // V59: cianuro expresado como CONCENTRACIÓN en mg/kg MS, no como porcentaje.
+  // Por eso no se multiplica por 100 como el resto de los campos. La regla V59
+  // lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
+  const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
 
-// V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
-// base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
-// El factor 1e6 convierte kg de MS a mg de MS (1 kg = 1e6 mg).
-const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
+  // V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
+  // base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
+  const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
+
   return {
     msTotal: ms,
     msPctPv: (ms / pv) * 100,
@@ -471,10 +484,9 @@ const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / m
     ureaGPor100kgPv:
       (alimentos.reduce((s, a, i) => s + (a.id === 'urea' ? x[i] : 0), 0) * 1000) / (pv / 100),
     almidonCiegoPct: (msSinAlmidon / ms) * 100,
-  hcnMgKg,
-  gosipolPpm,
-};
+    hcnMgKg,
+    gosipolPpm,
   };
-
+}
 
 export default { construirRestricciones, indicadoresDieta, limitesVigentes, COEF };
