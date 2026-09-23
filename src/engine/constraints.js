@@ -382,8 +382,28 @@ export function construirRestricciones({
       op: '<=', rhs: 0,
       name: `Gosipol <= ${TOPE_GOSIPOL_PPM} ppm (V46)`,
       campo: 'gosipolPpm', limitePct: TOPE_GOSIPOL_PPM, severidad: SEV.BLOCK,
-    });
-  }
+  });
+}
+
+// --- 8d. Nitrato (V83) ---------------------------------------------------
+// V83 es WARN, no BLOCK: la fila va elástica con penalización baja (20),
+// igual que los límites WARN leídos de safety.js. La justificación es que
+// el nitrato es un riesgo real solo cuando el forraje pasó por estrés
+// hídrico o fertilización excesiva, y en ese caso el productor debe poder
+// ver la advertencia sin que el solver se niegue a formular.
+// Linealización idéntica a V59 y V46:
+//   Σ x_i * (nitrato_i - 4400) <= 0  =>  nitratoPpm <= 4400
+// 4400 ppm NO3 equivale a 1000 ppm NO3-N, el umbral de UNL G1779.
+const TOPE_NITRATO_PPM = 4400;
+const tieneNitrato = alimentos.some((a) => numOrNull(a.nitrato) !== null);
+if (tieneNitrato) {
+  rows.push({
+    coef: alimentos.map((a) => v(a.nitrato) - TOPE_NITRATO_PPM),
+    op: '<=', rhs: 0, elastic: true, penalty: 20,
+    name: `Nitrato <= ${TOPE_NITRATO_PPM} ppm (V83)`,
+    campo: 'nitratoPpm', limitePct: TOPE_NITRATO_PPM, severidad: SEV.WARN,
+  });
+}
 
   // --- 9. Criterios de PRACTICIDAD -----------------------------------------
   // ATENCIÓN: esto NO sale de una norma publicada. Son decisiones de
@@ -463,9 +483,15 @@ const azucaresPct = pct('azucaresPct');
   // lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
   const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
 
-  // V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
-  // base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
-  const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
+// V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
+// base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
+const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
+
+// V83: nitrato (NO3) en ppm de la MS. Misma unidad que HCN y gosipol. El
+// riesgo real está en los forrajes y silajes, no en los granos: el grano
+// casi no acumula nitrato (las fuentes extensionistas lo dicen textual).
+// El tope de 4400 ppm NO3 equivale a 1000 ppm NO3-N.
+const nitratoPpm = alimentos.reduce((s, a, i) => s + v(a.nitrato) * x[i], 0) / ms;
 
   return {
     msTotal: ms,
@@ -494,6 +520,7 @@ const azucaresPct = pct('azucaresPct');
     almidonCiegoPct: (msSinAlmidon / ms) * 100,
     hcnMgKg,
     gosipolPpm,
+    nitratoPpm,
   };
 }
 
