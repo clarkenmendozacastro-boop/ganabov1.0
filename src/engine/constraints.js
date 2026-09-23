@@ -79,7 +79,7 @@ export const COEF = {
   ndfPct: (a) => v(a.ndf) / 100,
   fndfPct: (a) => (esForraje(a) ? v(a.ndf) / 100 : 0),
   almidonPct: (a) => v(a.almidon) / 100,
-  azucaresPct: (a) => v(a.azucares) /100,
+  azucaresPct: (a) => v(a.azucares) / 100,
   eePct: (a) => v(a.ee) / 100,
   sPct: (a) => v(a.s) / 100,
   mgPct: (a) => v(a.mg) / 100,
@@ -121,6 +121,11 @@ function aplicaFase(r, fase) {
  * (el mayor de los mínimos y el menor de los máximos), separando las que
  * bloquean de las que sólo advierten.
  *
+ * Además guarda QUÉ regla aportó cada límite específico, para que el nombre
+ * de la fila del LP diga "V93b" cuando es el mínimo de fósforo y "V81"
+ * cuando es el máximo, en lugar de listar todas las reglas que tocan el
+ * campo en ambas.
+ *
  * @param {string} fase FASE.RECEP | FASE.CREC | FASE.TERM
  * @param {object} contexto valores de la dieta para los máximos dinámicos
  * @param {object} [opts]
@@ -131,7 +136,9 @@ function aplicaFase(r, fase) {
  *   sistema no tiene umbral definido), V93b NO aporta límite: el llamador
  *   debe decidir qué hacer — este motor registra un aviso de configuración
  *   desde evaluarSeguridad(), nunca inventa un default.
- * @returns {object} { [campo]: { minBlock, maxBlock, minWarn, maxWarn, reglas } }
+ * @returns {object} { [campo]: { minBlock, maxBlock, minWarn, maxWarn, reglas,
+ *                                reglasMinBlock, reglasMaxBlock,
+ *                                reglasMinWarn, reglasMaxWarn } }
  */
 export function limitesVigentes(fase, contexto = {}, opts = {}) {
   const { sistemaId } = opts;
@@ -142,7 +149,13 @@ export function limitesVigentes(fase, contexto = {}, opts = {}) {
 
     const max = r.max === 'dinamico' && r.maxDinamico ? r.maxDinamico(contexto) : r.max;
     const o = (out[r.campo] ||= {
-      minBlock: null, maxBlock: null, minWarn: null, maxWarn: null, reglas: [],
+      minBlock: null, maxBlock: null, minWarn: null, maxWarn: null,
+      reglas: [],
+      // Reglas específicas que aportaron cada límite. Sirven para que el
+      // nombre de la fila del LP diga "V93b" cuando es el mínimo y "V81"
+      // cuando es el máximo, en vez de listar todas las que tocan el campo.
+      reglasMinBlock: [], reglasMaxBlock: [],
+      reglasMinWarn: [], reglasMaxWarn: [],
     });
     o.reglas.push(r.id);
 
@@ -162,11 +175,27 @@ export function limitesVigentes(fase, contexto = {}, opts = {}) {
       rMin = numOrNull(r.min);
     }
     const rMax = numOrNull(max);
+
+    const kReglasMin = kMin === 'minBlock' ? 'reglasMinBlock' : 'reglasMinWarn';
+    const kReglasMax = kMax === 'maxBlock' ? 'reglasMaxBlock' : 'reglasMaxWarn';
+
     if (rMin !== null) {
-      o[kMin] = o[kMin] === null ? rMin : Math.max(o[kMin], rMin);
+      if (o[kMin] === null || rMin > o[kMin]) {
+        // Este límite es el nuevo más exigente: reemplaza la lista de reglas.
+        o[kMin] = rMin;
+        o[kReglasMin] = [r.id];
+      } else if (rMin === o[kMin]) {
+        // Empate: se acumulan las reglas que aportan el mismo valor.
+        o[kReglasMin].push(r.id);
+      }
     }
     if (rMax !== null) {
-      o[kMax] = o[kMax] === null ? rMax : Math.min(o[kMax], rMax);
+      if (o[kMax] === null || rMax < o[kMax]) {
+        o[kMax] = rMax;
+        o[kReglasMax] = [r.id];
+      } else if (rMax === o[kMax]) {
+        o[kReglasMax].push(r.id);
+      }
     }
   }
   return out;
@@ -278,13 +307,23 @@ export function construirRestricciones({
       // hacia el lado seguro: los máximos se bajan y los mínimos se suben.
       const margen = sev === SEV.BLOCK ? 0.01 : 0;
       const pctAjustado = op === '<=' ? pct * (1 - margen) : pct * (1 + margen);
+
+      // Nombre de la fila: usar SOLO las reglas que aportaron este límite
+      // específico, no todas las que tocan el campo. Así el mínimo de fósforo
+      // dice "(V93b)" y el máximo dice "(V81)", en lugar del confuso
+      // "(V81/V93b)" en ambas.
+      const kReglas = sev === SEV.BLOCK
+        ? (op === '>=' ? 'reglasMinBlock' : 'reglasMaxBlock')
+        : (op === '>=' ? 'reglasMinWarn' : 'reglasMaxWarn');
+      const reglasDelLimite = (l[kReglas] && l[kReglas].length) ? l[kReglas] : l.reglas;
+
       rows.push({
         coef: [...coef], op, rhs: (pctAjustado / 100) * base,
         elastic: sev === SEV.WARN, penalty: sev === SEV.WARN ? 20 : undefined,
-        name: `${campo} ${op} ${pct}% (${l.reglas.join('/')})`,
+        name: `${campo} ${op} ${pct}% (${reglasDelLimite.join('/')})`,
         campo, limitePct: pct, severidad: sev,
       });
-      impuestos.push({ campo, op, pct, sev, reglas: l.reglas });
+      impuestos.push({ campo, op, pct, sev, reglas: reglasDelLimite });
     };
 
     push('>=', l.minBlock, SEV.BLOCK);
@@ -382,28 +421,28 @@ export function construirRestricciones({
       op: '<=', rhs: 0,
       name: `Gosipol <= ${TOPE_GOSIPOL_PPM} ppm (V46)`,
       campo: 'gosipolPpm', limitePct: TOPE_GOSIPOL_PPM, severidad: SEV.BLOCK,
-  });
-}
+    });
+  }
 
-// --- 8d. Nitrato (V83) ---------------------------------------------------
-// V83 es WARN, no BLOCK: la fila va elástica con penalización baja (20),
-// igual que los límites WARN leídos de safety.js. La justificación es que
-// el nitrato es un riesgo real solo cuando el forraje pasó por estrés
-// hídrico o fertilización excesiva, y en ese caso el productor debe poder
-// ver la advertencia sin que el solver se niegue a formular.
-// Linealización idéntica a V59 y V46:
-//   Σ x_i * (nitrato_i - 4400) <= 0  =>  nitratoPpm <= 4400
-// 4400 ppm NO3 equivale a 1000 ppm NO3-N, el umbral de UNL G1779.
-const TOPE_NITRATO_PPM = 4400;
-const tieneNitrato = alimentos.some((a) => numOrNull(a.nitrato) !== null);
-if (tieneNitrato) {
-  rows.push({
-    coef: alimentos.map((a) => v(a.nitrato) - TOPE_NITRATO_PPM),
-    op: '<=', rhs: 0, elastic: true, penalty: 20,
-    name: `Nitrato <= ${TOPE_NITRATO_PPM} ppm (V83)`,
-    campo: 'nitratoPpm', limitePct: TOPE_NITRATO_PPM, severidad: SEV.WARN,
-  });
-}
+  // --- 8d. Nitrato (V83) ---------------------------------------------------
+  // V83 es WARN, no BLOCK: la fila va elástica con penalización baja (20),
+  // igual que los límites WARN leídos de safety.js. La justificación es que
+  // el nitrato es un riesgo real solo cuando el forraje pasó por estrés
+  // hídrico o fertilización excesiva, y en ese caso el productor debe poder
+  // ver la advertencia sin que el solver se niegue a formular.
+  // Linealización idéntica a V59 y V46:
+  //   Σ x_i * (nitrato_i - 4400) <= 0  =>  nitratoPpm <= 4400
+  // 4400 ppm NO3 equivale a 1000 ppm NO3-N, el umbral de UNL G1779.
+  const TOPE_NITRATO_PPM = 4400;
+  const tieneNitrato = alimentos.some((a) => numOrNull(a.nitrato) !== null);
+  if (tieneNitrato) {
+    rows.push({
+      coef: alimentos.map((a) => v(a.nitrato) - TOPE_NITRATO_PPM),
+      op: '<=', rhs: 0, elastic: true, penalty: 20,
+      name: `Nitrato <= ${TOPE_NITRATO_PPM} ppm (V83)`,
+      campo: 'nitratoPpm', limitePct: TOPE_NITRATO_PPM, severidad: SEV.WARN,
+    });
+  }
 
   // --- 9. Criterios de PRACTICIDAD -----------------------------------------
   // ATENCIÓN: esto NO sale de una norma publicada. Son decisiones de
@@ -463,17 +502,17 @@ export function indicadoresDieta(alimentos, x, pv) {
   if (ms <= 0) return { msTotal: 0 };
   const pct = (campo) => (alimentos.reduce((s, a, i) => s + COEF[campo](a) * x[i], 0) / ms) * 100;
 
-const caPct = pct('caPct');
-const pPct = pct('pPct');
+  const caPct = pct('caPct');
+  const pPct = pct('pPct');
 
-// Azúcares solubles como % de la MS. Alimenta el componente azucares
-// del score de acidosis: los azúcares fermentan más rápido que el almidón
-// y bajan el pH ruminal antes. Solo 9 alimentos declaran el dato; el resto
-// no aporta (no es que tengan cero real, es que no se sabe).
-const azucaresPct = pct('azucaresPct');
+  // Azúcares solubles como % de la MS. Alimenta el componente `azucares`
+  // del score de acidosis: los azúcares fermentan más rápido que el almidón
+  // y bajan el pH ruminal antes. Solo 9 alimentos declaran el dato; el resto
+  // no aporta (no es que tengan cero real, es que no se sabe).
+  const azucaresPct = pct('azucaresPct');
 
-// Cuánta MS viene de concentrados que NO declaran almidón: el índice de
-// acidosis está ciego en esa parte y hay que decirlo.
+  // Cuánta MS viene de concentrados que NO declaran almidón: el índice de
+  // acidosis está ciego en esa parte y hay que decirlo.
   const msSinAlmidon = alimentos.reduce(
     (s, a, i) => s + (esConcentrado(a) && numOrNull(a.almidon) === null ? x[i] : 0), 0,
   );
@@ -483,15 +522,15 @@ const azucaresPct = pct('azucaresPct');
   // lo toma directamente de acá, y el LP lo restringe en construirRestricciones.
   const hcnMgKg = alimentos.reduce((s, a, i) => s + v(a.hcn) * x[i], 0) / ms;
 
-// V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
-// base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
-const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
+  // V46: gosipol libre, misma unidad que HCN (mg/kg MS = ppm). El valor de la
+  // base es del ingrediente PURO, y la regla exige un tope en la ración TOTAL.
+  const gosipolPpm = alimentos.reduce((s, a, i) => s + v(a.gosipol) * x[i], 0) / ms;
 
-// V83: nitrato (NO3) en ppm de la MS. Misma unidad que HCN y gosipol. El
-// riesgo real está en los forrajes y silajes, no en los granos: el grano
-// casi no acumula nitrato (las fuentes extensionistas lo dicen textual).
-// El tope de 4400 ppm NO3 equivale a 1000 ppm NO3-N.
-const nitratoPpm = alimentos.reduce((s, a, i) => s + v(a.nitrato) * x[i], 0) / ms;
+  // V83: nitrato (NO3) en ppm de la MS. Misma unidad que HCN y gosipol. El
+  // riesgo real está en los forrajes y silajes, no en los granos: el grano
+  // casi no acumula nitrato (las fuentes extensionistas lo dicen textual).
+  // El tope de 4400 ppm NO3 equivale a 1000 ppm NO3-N.
+  const nitratoPpm = alimentos.reduce((s, a, i) => s + v(a.nitrato) * x[i], 0) / ms;
 
   return {
     msTotal: ms,

@@ -691,10 +691,14 @@ function mensajeDeficiencia(v) {
   if (n.startsWith('Ca')) {
     return `Falta calcio: ${num(v.amount).toFixed(1)} g/día. Sin calcio el animal no deposita hueso y aparecen problemas de aplomos. Agregá carbonato de calcio o una sal mineral.`;
   }
+  if (n.startsWith('pPct')) {
+    const gramos = num(v.amount) * 1000;
+    return `Falta fósforo: ${gramos.toFixed(1)} g/día para llegar al mínimo del sistema. Agregá fosfato bicálcico o una sal mineral con fósforo.`;
+  }
   if (n.startsWith('P ')) {
     return `Falta fósforo: ${num(v.amount).toFixed(1)} g/día. Agregá fosfato bicálcico o una sal mineral con fósforo.`;
   }
-  return `No se pudo cumplir la restricción "${n}" (faltan ${num(v.amount).toFixed(2)}).`;
+  return `No se pudo cumplir la restricción "${n}" (faltan ${num(v.amount).toFixed(3)}).`;
 }
 
 export default { formularRacionAvanzada, calcularRequerimientosAvanzado, FASES_FEEDLOT };
