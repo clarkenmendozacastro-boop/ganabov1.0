@@ -1087,6 +1087,124 @@ console.log('\n16. V83: nitrato en granos y silajes (ppm, no %)');
   }
 }
 // ---------------------------------------------------------------------------
+console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
+// ---------------------------------------------------------------------------
+
+// 17a. La regla V84 existe en safety.js con los valores correctos.
+{
+  const { REGLAS } = await import('../src/engine/safety.js');
+  const v84 = REGLAS.find((r) => r.id === 'V84');
+  ok('V84 existe en REGLAS', !!v84);
+  ok('V84 tiene campo "peNdfPct"', v84 && v84.campo === 'peNdfPct');
+  ok('V84 tiene min 15', v84 && v84.min === 15);
+  ok('V84 tiene max null', v84 && v84.max === null);
+  ok('V84 aplica a fase CREC', v84 && v84.fase === 'CREC');
+  ok('V84 es WARN (no BLOCK)', v84 && v84.sev === 'WARN');
+}
+
+// 17b. limitesVigentes() resuelve V84 en CREC y no en TERM.
+{
+  const { limitesVigentes } = await import('../src/engine/constraints.js');
+  const limCrec = limitesVigentes('CREC', {});
+  const limTerm = limitesVigentes('TERM', {});
+
+  ok('CREC: peNdfPct tiene minWarn 15', limCrec.peNdfPct?.minWarn === 15);
+  ok('CREC: peNdfPct tiene minBlock 5 (de V4)', limCrec.peNdfPct?.minBlock === 5);
+  ok('CREC: reglasMinWarn incluye V84',
+     limCrec.peNdfPct?.reglasMinWarn?.includes('V84'));
+
+  // En TERM, V84 no aplica (su fase es solo CREC), pero V2 y V4 sí.
+  ok('TERM: peNdfPct tiene minWarn 10 (de V2, no V84)',
+     limTerm.peNdfPct?.minWarn === 10);
+  ok('TERM: reglasMinWarn NO incluye V84',
+     !limTerm.peNdfPct?.reglasMinWarn?.includes('V84'));
+}
+
+// 17c. La fila V84 llega al LP como WARN elástica cuando el peNDF es bajo.
+{
+  const alimentos = [
+    // Forraje de muy baja fibra efectiva: simula el caso crítico.
+    { id: 'forraje_x', categoria: 'forraje', ndf: 20, pef: 0.3, p: 0.2, ca: 0.45,
+      em: 2.5, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'maiz_x', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
+      em: 3.3, pb: 9, almidon: 72, ee: 4, s: 0.05, mg: 0.12, k: 0.4, max_inclusion_pct: null },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaV84 = rows.find((r) => r.name && r.name.includes('V84'));
+  ok('LP en CREC: la fila V84 existe', !!filaV84);
+  ok('LP en CREC: la fila V84 es WARN elástica',
+     filaV84 && filaV84.severidad === 'WARN' && filaV84.elastic === true);
+  ok('LP en CREC: la fila V84 tiene penalty 20 (WARN)',
+     filaV84 && filaV84.penalty === 20);
+}
+
+// 17d. La regla V84 se dispara en evaluarSeguridad cuando el peNDF es bajo.
+{
+  const conPeNdfBajo = evaluarSeguridad({
+    peNdfPct: 12, ndfPct: 45, almidonPct: 25, forrajePct: 30, concentradoPct: 70,
+    caPct: 0.6, pPct: 0.3, ratioCaP: 2.0,
+  }, 'CREC');
+  const v84 = conPeNdfBajo.advertencias.find((w) => w.id === 'V84');
+  ok('peNDF 12 % en CREC: V84 aparece como advertencia', !!v84);
+  ok('V84 no aparece como bloqueo', !conPeNdfBajo.bloqueos.some((b) => b.id === 'V84'));
+  ok('V84 reporta el mínimo 15', v84 && v84.min === 15);
+
+  const conPeNdfAlto = evaluarSeguridad({
+    peNdfPct: 25, ndfPct: 55, almidonPct: 20, forrajePct: 60, concentradoPct: 40,
+    caPct: 0.6, pPct: 0.3, ratioCaP: 2.0,
+  }, 'CREC');
+  ok('peNDF 25 % en CREC: V84 no dispara',
+     !conPeNdfAlto.advertencias.some((w) => w.id === 'V84'));
+}
+
+// 17e. El techo del bagazo cambió de null a 15 %.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const bagazo = ALIMENTOS_BASE.find((a) => a.id === 'bagazo_cana');
+  ok('bagazo_cana.max_inclusion_pct existe', bagazo && bagazo.max_inclusion_pct !== null);
+  ok('bagazo_cana.max_inclusion_pct === 15',
+     bagazo && bagazo.max_inclusion_pct === 15);
+}
+
+// 17f. La fila de techo del bagazo se emite en el LP con el valor correcto.
+{
+  const alimentos = [
+    { id: 'forraje_x', categoria: 'forraje', ndf: 60, pef: 0.9, p: 0.2, ca: 0.45,
+      em: 2.0, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
+    { id: 'bagazo_cana', categoria: 'forraje', ndf: 86.9, pef: 0.4, p: 0.06, ca: 0.14,
+      em: 1.656, pb: 1.8, almidon: null, ee: 0.6, s: 0, mg: 0.08, k: 0.13, max_inclusion_pct: 15 },
+  ];
+  const { rows } = construirRestricciones({
+    alimentos, dmi: 10, pv: 350, fase: 'CREC',
+    emRequerida: 20, pbRequeridaKg: 1.0, pdrRequeridaKg: 0.6,
+    caRequeridaG: 25, pRequeridaG: 15, contexto: {},
+  });
+  const filaBagazo = rows.find((r) => r.alimentoId === 'bagazo_cana');
+  ok('LP: la fila del techo del bagazo existe', !!filaBagazo);
+  ok('LP: la fila del techo del bagazo dice "<= 15% MS"',
+     filaBagazo && filaBagazo.name.includes('<= 15% MS'));
+  // 15 % de 10 kg MS = 1.5 kg MS
+  ok(`LP: rhs del bagazo = 1.5 kg MS (obtenido ${filaBagazo?.rhs})`,
+     filaBagazo && Math.abs(filaBagazo.rhs - 1.5) < 1e-9);
+}
+
+// 17g. Regresión: una ración pastoril no rompe con V84.
+{
+  const r = formularRacionAvanzada({
+    pv: 250, sistemaId: 'pastoril', razaId: 'nelore', temperatura: 28,
+  });
+  if (!r.error) {
+    ok('Ración pastoril 250 kg: sin bloqueos de seguridad',
+       r.seguridad.bloqueos.length === 0);
+    ok('Ración pastoril 250 kg: V84 no aparece como bloqueo',
+       !r.seguridad.bloqueos.some((b) => b.id === 'V84'));
+  }
+}
+// ---------------------------------------------------------------------------
 console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
 console.log('====================================================\n');

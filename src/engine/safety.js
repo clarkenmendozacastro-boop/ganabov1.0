@@ -65,12 +65,26 @@ export const REGLAS = [
     mensaje: 'La fibra total está por debajo de 13 %: margen de seguridad estrecho, exige comedero muy parejo.',
   },
   {
-    id: 'V8', campo: 'ndfPct', min: 40, max: null, unidad: '% MS',
-    fase: FASE.CREC, sev: SEV.WARN,
-    nombre: 'FDN en crecimiento', previene: 'Acidosis, engrasamiento precoz',
-    fuente: 'AHDB', url: 'https://ahdb.org.uk/knowledge-library/growing-and-finishing-cattle-nutritional-guidance-for-dairy-beef',
-    mensaje: 'En crecimiento se recomienda no bajar de 40 % de FDN.',
-  },
+  id: 'V8', campo: 'ndfPct', min: 40, max: null, unidad: '% MS',
+  fase: FASE.CREC, sev: SEV.WARN,
+  nombre: 'FDN en crecimiento', previene: 'Acidosis, engrasamiento precoz',
+  fuente: 'AHDB', url: 'https://ahdb.org.uk/knowledge-library/growing-and-finishing-cattle-nutritional-guidance-for-dairy-beef',
+  mensaje: 'En crecimiento se recomienda no bajar de 40 % de FDN.',
+},
+{
+  id: 'V84', campo: 'peNdfPct', min: 15, max: null, unidad: '% MS',
+  fase: FASE.CREC, sev: SEV.WARN,
+  nombre: 'peNDF en crecimiento',
+  previene: 'SARA y acidosis subclínica durante el crecimiento',
+  // Umbral operativo del motor, no norma publicada. La fibra efectiva
+  // mínima publicada es 5 % (MSU P2489, regla V4) y los objetivos de
+  // engorde activo rondan 15 %. No hay una norma única publicada para
+  // CREC en el trópico; este valor es el colchón de seguridad que el
+  // motor considera prudente antes de dejar la dieta en el piso absoluto.
+  fuente: 'Umbral operativo del motor. Fibra efectiva mínima: MSU P2489',
+  url: 'https://extension.msstate.edu/sites/default/files/publications/publications/p2489.pdf',
+  mensaje: 'La fibra físicamente efectiva está por debajo del colchón de seguridad para crecimiento (15 %). No es un peligro inmediato, pero con dietas de concentrado alto conviene subir forraje o picarlo más grueso.',
+},
   {
     id: 'V9', campo: 'forrajePct', min: 5, max: null, unidad: '% MS',
     fase: FASE.TERM, sev: SEV.BLOCK,

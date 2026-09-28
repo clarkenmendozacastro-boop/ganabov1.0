@@ -2593,7 +2593,7 @@ export const ALIMENTOS_BASE = [
     cl: null,
     pef: 0.4,
     peNDF: 34.76,
-    max_inclusion_pct: null,
+    max_inclusion_pct: 15,
     precio_kg: 0.2,
     fuente: "Feedipedia — Bagasse, fresh",
     url: "https://www.feedipedia.org/node/11672",
