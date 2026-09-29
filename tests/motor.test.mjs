@@ -1205,6 +1205,160 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
   }
 }
 // ---------------------------------------------------------------------------
+console.log('\n18. Override de alimentos (aplicar, detectar cambios, mergear)');
+// ---------------------------------------------------------------------------
+
+const {
+  CAMPOS_EDITABLES,
+  camposModificados,
+  mergeOverride,
+  aplicarOverrides,
+  tieneOverride,
+} = await import('../src/utils/alimentos.js');
+
+// 18a. CAMPOS_EDITABLES existe y contiene los campos críticos.
+{
+  ok('CAMPOS_EDITABLES es un array', Array.isArray(CAMPOS_EDITABLES));
+  ok('CAMPOS_EDITABLES tiene al menos 20 campos', CAMPOS_EDITABLES.length >= 20);
+  ok('Incluye "ca"', CAMPOS_EDITABLES.includes('ca'));
+  ok('Incluye "p"', CAMPOS_EDITABLES.includes('p'));
+  ok('Incluye "pb"', CAMPOS_EDITABLES.includes('pb'));
+  ok('Incluye "ndf"', CAMPOS_EDITABLES.includes('ndf'));
+  ok('Incluye "ee"', CAMPOS_EDITABLES.includes('ee'));
+  ok('Incluye "almidon"', CAMPOS_EDITABLES.includes('almidon'));
+  ok('NO incluye campos derivados como "tdn"', !CAMPOS_EDITABLES.includes('tdn'));
+  ok('NO incluye campos de identidad como "id"', !CAMPOS_EDITABLES.includes('id'));
+  ok('NO incluye campos de fuente como "url"', !CAMPOS_EDITABLES.includes('url'));
+}
+
+// 18b. camposModificados detecta solo lo que cambió.
+{
+  const original = { id: 'x', ca: 0.02, p: 0.32, pb: 9.4, ndf: 9.5, ee: 4.4 };
+  const editado  = { ca: '0.03', p: '0.32', pb: '9.4', ndf: '9.5', ee: '5.0' };
+
+  const { campos } = camposModificados(original, editado);
+
+  ok('Detecta ca cambiado a 0.03', campos.ca === 0.03);
+  ok('NO incluye p porque quedó igual (0.32)', !('p' in campos));
+  ok('NO incluye pb porque quedó igual (9.4)', !('pb' in campos));
+  ok('NO incluye ndf porque quedó igual (9.5)', !('ndf' in campos));
+  ok('Detecta ee cambiado a 5.0', campos.ee === 5.0);
+}
+
+// 18c. camposModificados ignora campos vacíos (null), no los borra.
+{
+  const original = { id: 'x', ca: 0.5, p: 0.3, pb: 10 };
+  const editado  = { ca: '', p: null, pb: '10' };
+
+  const { campos } = camposModificados(original, editado);
+
+  ok('ca vacío: NO se incluye (no borra el valor de la base)', !('ca' in campos));
+  ok('p null: NO se incluye', !('p' in campos));
+  ok('pb igual: NO se incluye', !('pb' in campos));
+  ok('El objeto de cambios queda vacío', Object.keys(campos).length === 0);
+}
+
+// 18d. camposModificados duplica prot/pb y fdn/ndf automáticamente.
+{
+  const original = { id: 'x', pb: 10, prot: 10, ndf: 20, fdn: 20 };
+  const editado  = { pb: '12', ndf: '25' };
+
+  const { campos } = camposModificados(original, editado);
+
+  ok('Editando pb: cambia pb a 12', campos.pb === 12);
+  ok('Editando pb: también cambia prot a 12', campos.prot === 12);
+  ok('Editando ndf: cambia ndf a 25', campos.ndf === 25);
+  ok('Editando ndf: también cambia fdn a 25', campos.fdn === 25);
+}
+
+// 18e. mergeOverride aplica los cambios sobre el original.
+{
+  const base = { id: 'maiz_x', nombre: 'Maíz', pb: 9.4, ca: 0.02, p: 0.32, ndf: 9.5 };
+  const override = { campos: { ca: 0.03, ndf: 10, fdn: 10 }, updatedAt: '2026-09-29' };
+
+  const merged = mergeOverride(base, override);
+
+  ok('ca del override pisa al de la base', merged.ca === 0.03);
+  ok('p de la base se preserva (override no lo toca)', merged.p === 0.32);
+  ok('pb de la base se preserva', merged.pb === 9.4);
+  ok('ndf del override pisa al de la base', merged.ndf === 10);
+  ok('fdn del override pisa al de la base', merged.fdn === 10);
+  ok('Nombre de la base se preserva', merged.nombre === 'Maíz');
+  ok('Se marca con _override: true', merged._override === true);
+  ok('Se guarda la fecha del override', merged._overrideFecha === '2026-09-29');
+  ok('Se conserva el original en _original', merged._original && merged._original.ca === 0.02);
+}
+
+// 18f. mergeOverride sin override devuelve el original intacto.
+{
+  const base = { id: 'x', ca: 0.02 };
+  const sinOv = mergeOverride(base, null);
+  ok('Sin override: devuelve el original', sinOv === base);
+  ok('Sin override: NO marca _override', !sinOv._override);
+}
+
+// 18g. aplicarOverrides procesa un array completo.
+{
+  const alimentos = [
+    { id: 'maiz', ca: 0.02, pb: 9.4 },
+    { id: 'sorgo', ca: 0.03, pb: 10.8 },
+    { id: 'soya', ca: 0.38, pb: 52.6 },
+  ];
+  const overrides = {
+    maiz: { campos: { ca: 0.03 }, updatedAt: '2026-09-29' },
+    soya: { campos: { ca: 0.40, pb: 55.0 }, updatedAt: '2026-09-29' },
+  };
+
+  const resultado = aplicarOverrides(alimentos, overrides);
+
+  ok('Cantidad de alimentos no cambia (3)', resultado.length === 3);
+  const maiz = resultado.find((a) => a.id === 'maiz');
+  const sorgo = resultado.find((a) => a.id === 'sorgo');
+  const soya = resultado.find((a) => a.id === 'soya');
+
+  ok('maíz: ca = 0.03 (override)', maiz.ca === 0.03);
+  ok('maíz: _override = true', maiz._override === true);
+  ok('sorgo: ca = 0.03 (base, sin override)', sorgo.ca === 0.03);
+  ok('sorgo: _override undefined', !sorgo._override);
+  ok('soya: ca = 0.40 (override)', soya.ca === 0.40);
+  ok('soya: pb = 55.0 (override)', soya.pb === 55.0);
+  ok('soya: _override = true', soya._override === true);
+}
+
+// 18h. aplicarOverrides sin overrides devuelve el array tal cual.
+{
+  const alimentos = [{ id: 'maiz' }, { id: 'sorgo' }];
+  const sinCambios = aplicarOverrides(alimentos, {});
+  ok('Sin overrides: mismo array', sinCambios === alimentos);
+  const sinNada = aplicarOverrides(alimentos, null);
+  ok('Con null: mismo array', sinNada === alimentos);
+}
+
+// 18i. tieneOverride funciona.
+{
+  const overrides = { maiz: { campos: { ca: 0.03 } } };
+  ok('maíz tiene override', tieneOverride(overrides, 'maiz') === true);
+  ok('sorgo NO tiene override', tieneOverride(overrides, 'sorgo') === false);
+  ok('overrides vacío: ninguno tiene', tieneOverride({}, 'maiz') === false);
+  ok('overrides null: ninguno tiene', tieneOverride(null, 'maiz') === false);
+}
+
+// 18j. Los alimentos de la base real se pueden overridear sin romper.
+{
+  const { ALIMENTOS_BASE } = await import('../src/data/alimentosBase.js');
+  const maiz = ALIMENTOS_BASE.find((a) => a.id === 'maiz_amarillo');
+  ok('maiz_amarillo existe en la base', !!maiz);
+
+  const { campos } = camposModificados(maiz, { ca: '0.05' });
+  const merged = mergeOverride(maiz, { campos, updatedAt: '2026-09-29' });
+
+  ok('Override de ca en maíz real: ca = 0.05', merged.ca === 0.05);
+  ok('Override de ca en maíz real: p se preserva', merged.p === maiz.p);
+  ok('Override de ca en maíz real: pb se preserva', merged.pb === maiz.pb);
+  ok('Override de ca en maíz real: _original es el maíz de la base',
+     merged._original === maiz);
+}
+// ---------------------------------------------------------------------------
 console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
 console.log('====================================================\n');

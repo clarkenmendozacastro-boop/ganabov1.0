@@ -23,6 +23,7 @@ const Home = () => {
   const [animalSel, setAnimalSel] = useState(null);
   const [preciosUsr, setPreciosUsr] = useState({});
   const [customAl, setCustomAl] = useState([]);
+  const [overridesAl, setOverridesAl] = useState({});
   const [minsAlimentos, setMinsAlimentos] = useState({});
   const [dataLoading, setDataLoading] = useState(false);
   const [grupos, setGrupos] = useState([]);
@@ -43,10 +44,11 @@ const Home = () => {
 
   // Cargar datos
   useEffect(() => {
-    if (!uid) {
+        if (!uid) {
       setAnimales([]);
       setPreciosUsr({});
       setCustomAl([]);
+      setOverridesAl({});
       setMinsAlimentos({});
       setGrupos([]);
       return;
@@ -62,8 +64,13 @@ const Home = () => {
         precSnap.docs.forEach((d) => { precios[d.id] = d.data().valor; });
         setPreciosUsr(precios);
         
-        const alSnap = await getDocs(userCol(uid, "alimentos_custom"));
+       const alSnap = await getDocs(userCol(uid, "alimentos_custom"));
         setCustomAl(alSnap.docs.map((d) => ({ _id: d.id, id: d.id, ...d.data() })));
+
+        const ovSnap = await getDocs(userCol(uid, "alimentos_overrides"));
+        const ovs = {};
+        ovSnap.docs.forEach((d) => { ovs[d.id] = d.data(); });
+        setOverridesAl(ovs);
         
         const minsSnap = await getDocs(userCol(uid, "minimos"));
         const mins = {};
@@ -228,6 +235,7 @@ const Home = () => {
           <CalculadoraRacion
             preciosUsr={preciosUsr}
             customAl={customAl}
+            overridesAl={overridesAl}
             minsAlimentos={minsAlimentos}
             animales={animales}
             grupos={grupos}
@@ -236,10 +244,13 @@ const Home = () => {
         )}
         
         {nav === "alimentos" && (
-          <GestionAlimentos
+            <GestionAlimentos
             preciosUsr={preciosUsr}
             onPrecio={handlePrecio}
             customAl={customAl}
+            overridesAl={overridesAl}
+            onSetOverride={(id, campos) => setOverridesAl((p) => ({ ...p, [id]: { campos, updatedAt: new Date().toISOString() } }))}
+            onDeleteOverride={(id) => setOverridesAl((p) => { const c = { ...p }; delete c[id]; return c; })}
             onAddCustom={(a) => setCustomAl((p) => [...p, a])}
             uid={uid}
             minsAlimentos={minsAlimentos}

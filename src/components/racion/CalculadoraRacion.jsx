@@ -8,13 +8,14 @@ import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { ALIMENTOS_BASE, CATEGORIAS_ORDER, TIPO_LABELS } from "../../data/alimentosBase";
+import { aplicarOverrides } from "../../utils/alimentos";
 import { RAZAS } from "../../data/razas";
 import { formularRacionAvanzada, FASES_FEEDLOT } from "../../utils/nutricion";
 
 const QUALITY_OPTIONS = ["Óptimo", "Bueno", "Regular", "Bajo", "Muy deteriorado"];
 
 const CalculadoraRacion = ({ 
-  preciosUsr = {}, customAl = [], minsAlimentos = {}, 
+  preciosUsr = {}, customAl = [], overridesAl = {}, minsAlimentos = {}, 
   animales = [], grupos = [], uid, onFormulacionGuardada 
 }) => {
   const [peso, setPeso] = useState("");
@@ -44,7 +45,11 @@ const CalculadoraRacion = ({
   const [mensajeGuardado, setMensajeGuardado] = useState(null);
   const [mostrarGuardar, setMostrarGuardar] = useState(false);
 
-  const todosAl = [...ALIMENTOS_BASE, ...customAl];
+  // Los overrides del usuario se aplican sobre los alimentos de la base (y
+  // sobre los custom por si en el futuro se permite overridearlos). Los
+  // alimentos con override tienen los campos que el usuario cambió, más una
+  // marca `_override: true` que la UI usa para mostrar el badge.
+  const todosAl = aplicarOverrides([...ALIMENTOS_BASE, ...customAl], overridesAl);
   const filtrados = todosAl.filter(a => a.nombre.toLowerCase().includes(busq.toLowerCase()) || (TIPO_LABELS[a.categoria] || "").toLowerCase().includes(busq.toLowerCase()));
   const seleccionados = todosAl.filter(a => selIds.has(a.id));
   const alimentosSeleccionadosMis = todosAl.filter(a => misAlimentosIds.has(a.id));
