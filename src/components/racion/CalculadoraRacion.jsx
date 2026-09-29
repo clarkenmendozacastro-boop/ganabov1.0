@@ -24,6 +24,10 @@ const CalculadoraRacion = ({
   const [modo, setModo] = useState("optimo");
   const [faseFeedlot, setFaseFeedlot] = useState("inicio");
   const [temperatura, setTemperatura] = useState(28);
+  // Objetivo de ganancia diaria (kg/día). Si está vacío, el motor usa el
+  // default de la fase (feedlot) o del sistema. Si tiene un valor, el motor
+  // intenta llegar; si no puede, calcula la ganancia real y avisa.
+  const [gdpObjetivo, setGdpObjetivo] = useState("");
   const [selIds, setSelIds] = useState(new Set());
   const [misAlimentosIds, setMisAlimentosIds] = useState(new Set());
   const [busq, setBusq] = useState("");
@@ -113,7 +117,8 @@ const CalculadoraRacion = ({
       estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
       alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null,
-      temperatura: parseFloat(temperatura) || 28
+      temperatura: parseFloat(temperatura) || 28,
+      gdpObjetivo: gdpObjetivo ? parseFloat(gdpObjetivo) : null
     });
     if (!res.error) setResultado(res);
   };
@@ -131,7 +136,8 @@ const CalculadoraRacion = ({
       estadosCalidad, modo,
       fase: sistema === "feedlot" ? faseFeedlot : null,
       alimentosSeleccionadosIds: modo === "mis_alimentos" ? misAlimentosIds : null,
-      temperatura: parseFloat(temperatura) || 28
+      temperatura: parseFloat(temperatura) || 28,
+      gdpObjetivo: gdpObjetivo ? parseFloat(gdpObjetivo) : null
     });
     if (!res.error) setResultado(res);
   };
@@ -168,6 +174,7 @@ const CalculadoraRacion = ({
         raza, sistema, modo,
         temperatura: parseFloat(temperatura) || 28,
         fase_feedlot: sistema === "feedlot" ? faseFeedlot : null,
+        gdp_objetivo: gdpObjetivo ? parseFloat(gdpObjetivo) : null,
         gdp_estimada: resultado.gdp_estimada,
         indicadores: resultado.indicadores,
         aditivos: resultado.aditivosRecomendados || [],
@@ -213,6 +220,19 @@ const CalculadoraRacion = ({
         <div className="grid grid-cols-2 gap-3">
           <Inp label="Peso (kg)" type="number" value={peso} onChange={e => { setPeso(e.target.value); setResultado(null); }} placeholder="280" />
           <Inp label="Temperatura (°C)" type="number" value={temperatura} onChange={e => { setTemperatura(e.target.value); setResultado(null); }} placeholder="28" />
+        </div>
+        <div>
+          <Inp
+            label="GDP objetivo (kg/día) — opcional"
+            type="number"
+            step="0.05"
+            value={gdpObjetivo}
+            onChange={e => { setGdpObjetivo(e.target.value); setResultado(null); }}
+            placeholder="Vacío = usar el default del sistema"
+          />
+          <p className="text-zinc-500 text-xs mt-1">
+            Si lo dejás vacío, el motor elige el objetivo según el sistema y la fase. Si ponés un valor, intenta llegar; si no puede con los alimentos elegidos, te muestra la ganancia real y las deficiencias.
+          </p>
         </div>
         <Sel label="Raza" value={raza} onChange={e => setRaza(e.target.value)} className="bg-zinc-800 border border-zinc-600 text-white rounded-xl">
           {RAZAS.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
