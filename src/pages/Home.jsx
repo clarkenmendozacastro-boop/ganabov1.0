@@ -243,14 +243,21 @@ const Home = () => {
           />
         )}
         
-        {nav === "alimentos" && (
-            <GestionAlimentos
+                {nav === "alimentos" && (
+          <GestionAlimentos
             preciosUsr={preciosUsr}
             onPrecio={handlePrecio}
             customAl={customAl}
             overridesAl={overridesAl}
-            onSetOverride={(id, campos) => setOverridesAl((p) => ({ ...p, [id]: { campos, updatedAt: new Date().toISOString() } }))}
-            onDeleteOverride={(id) => setOverridesAl((p) => { const c = { ...p }; delete c[id]; return c; })}
+            onSetOverride={async (id, campos) => {
+              const datos = { campos, updatedAt: new Date().toISOString() };
+              await setDoc(userDoc(uid, "alimentos_overrides", id), datos);
+              setOverridesAl((p) => ({ ...p, [id]: datos }));
+            }}
+            onDeleteOverride={async (id) => {
+              await deleteDoc(userDoc(uid, "alimentos_overrides", id)).catch(() => {});
+              setOverridesAl((p) => { const c = { ...p }; delete c[id]; return c; });
+            }}
             onAddCustom={(a) => setCustomAl((p) => [...p, a])}
             uid={uid}
             minsAlimentos={minsAlimentos}
