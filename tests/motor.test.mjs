@@ -1085,12 +1085,11 @@ console.log('\n16. V83: nitrato en granos y silajes (ppm, no %)');
     ok('Ración normal: score_detalle sigue existiendo',
        r.score_detalle && typeof r.score_detalle.score === 'number');
   }
-}
 // ---------------------------------------------------------------------------
-console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
+console.log('\n17. V84 (peNDF mínimo en CREC, ahora BLOCK) y techo de bagazo');
 // ---------------------------------------------------------------------------
 
-// 17a. La regla V84 existe en safety.js con los valores correctos.
+// 17a. La regla V84 existe en safety.js con los valores correctos y severidad BLOCK.
 {
   const { REGLAS } = await import('../src/engine/safety.js');
   const v84 = REGLAS.find((r) => r.id === 'V84');
@@ -1099,19 +1098,23 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
   ok('V84 tiene min 15', v84 && v84.min === 15);
   ok('V84 tiene max null', v84 && v84.max === null);
   ok('V84 aplica a fase CREC', v84 && v84.fase === 'CREC');
-  ok('V84 es WARN (no BLOCK)', v84 && v84.sev === 'WARN');
+  ok('V84 es BLOCK (ya no WARN)', v84 && v84.sev === 'BLOCK');
 }
 
-// 17b. limitesVigentes() resuelve V84 en CREC y no en TERM.
+// 17b. limitesVigentes() resuelve V84 como BLOCK en CREC.
 {
   const { limitesVigentes } = await import('../src/engine/constraints.js');
   const limCrec = limitesVigentes('CREC', {});
   const limTerm = limitesVigentes('TERM', {});
 
-  ok('CREC: peNdfPct tiene minWarn 15', limCrec.peNdfPct?.minWarn === 15);
-  ok('CREC: peNdfPct tiene minBlock 5 (de V4)', limCrec.peNdfPct?.minBlock === 5);
-  ok('CREC: reglasMinWarn incluye V84',
-     limCrec.peNdfPct?.reglasMinWarn?.includes('V84'));
+  ok('CREC: peNdfPct tiene minBlock 15 (de V84, la más exigente)',
+     limCrec.peNdfPct?.minBlock === 15);
+  ok('CREC: peNdfPct NO tiene minWarn (V84 dejó de ser WARN)',
+     limCrec.peNdfPct?.minWarn === null || limCrec.peNdfPct?.minWarn === undefined);
+  ok('CREC: reglasMinBlock incluye V84',
+     limCrec.peNdfPct?.reglasMinBlock?.includes('V84'));
+  ok('CREC: reglasMinBlock NO incluye V4 (V84 gana por ser más exigente)',
+     !limCrec.peNdfPct?.reglasMinBlock?.includes('V4'));
 
   // En TERM, V84 no aplica (su fase es solo CREC), pero V2 y V4 sí.
   ok('TERM: peNdfPct tiene minWarn 10 (de V2, no V84)',
@@ -1120,10 +1123,9 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
      !limTerm.peNdfPct?.reglasMinWarn?.includes('V84'));
 }
 
-// 17c. La fila V84 llega al LP como WARN elástica cuando el peNDF es bajo.
+// 17c. La fila V84 llega al LP como BLOCK no elástica cuando el peNDF es bajo.
 {
   const alimentos = [
-    // Forraje de muy baja fibra efectiva: simula el caso crítico.
     { id: 'forraje_x', categoria: 'forraje', ndf: 20, pef: 0.3, p: 0.2, ca: 0.45,
       em: 2.5, pb: 8, almidon: null, ee: 2, s: 0.15, mg: 0.2, k: 1.5, max_inclusion_pct: null },
     { id: 'maiz_x', categoria: 'energético', ndf: 10, pef: 0, p: 0.30, ca: 0.03,
@@ -1136,21 +1138,24 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
   });
   const filaV84 = rows.find((r) => r.name && r.name.includes('V84'));
   ok('LP en CREC: la fila V84 existe', !!filaV84);
-  ok('LP en CREC: la fila V84 es WARN elástica',
-     filaV84 && filaV84.severidad === 'WARN' && filaV84.elastic === true);
-  ok('LP en CREC: la fila V84 tiene penalty 20 (WARN)',
-     filaV84 && filaV84.penalty === 20);
+  ok('LP en CREC: la fila V84 es BLOCK no elástica',
+     filaV84 && filaV84.severidad === 'BLOCK' && filaV84.elastic !== true);
+  ok('LP en CREC: la fila V84 NO tiene penalty (es dura)',
+     filaV84 && filaV84.penalty === undefined);
+  // rhs con margen del 1 % por ser BLOCK: 15 * 1.01 / 100 * 10 = 1.515
+  ok('LP en CREC: el rhs de V84 usa el margen del 1 % (BLOCK)',
+     filaV84 && Math.abs(filaV84.rhs - (15 * 1.01 / 100) * 10) < 1e-9);
 }
 
-// 17d. La regla V84 se dispara en evaluarSeguridad cuando el peNDF es bajo.
+// 17d. La regla V84 se dispara como BLOQUEO cuando el peNDF es bajo.
 {
   const conPeNdfBajo = evaluarSeguridad({
     peNdfPct: 12, ndfPct: 45, almidonPct: 25, forrajePct: 30, concentradoPct: 70,
     caPct: 0.6, pPct: 0.3, ratioCaP: 2.0,
   }, 'CREC');
-  const v84 = conPeNdfBajo.advertencias.find((w) => w.id === 'V84');
-  ok('peNDF 12 % en CREC: V84 aparece como advertencia', !!v84);
-  ok('V84 no aparece como bloqueo', !conPeNdfBajo.bloqueos.some((b) => b.id === 'V84'));
+  const v84 = conPeNdfBajo.bloqueos.find((b) => b.id === 'V84');
+  ok('peNDF 12 % en CREC: V84 aparece como bloqueo', !!v84);
+  ok('V84 ya no aparece como advertencia', !conPeNdfBajo.advertencias.some((w) => w.id === 'V84'));
   ok('V84 reporta el mínimo 15', v84 && v84.min === 15);
 
   const conPeNdfAlto = evaluarSeguridad({
@@ -1158,6 +1163,7 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
     caPct: 0.6, pPct: 0.3, ratioCaP: 2.0,
   }, 'CREC');
   ok('peNDF 25 % en CREC: V84 no dispara',
+     !conPeNdfAlto.bloqueos.some((b) => b.id === 'V84') &&
      !conPeNdfAlto.advertencias.some((w) => w.id === 'V84'));
 }
 
@@ -1192,17 +1198,41 @@ console.log('\n17. V84 (peNDF mínimo en CREC) y techo de bagazo');
      filaBagazo && Math.abs(filaBagazo.rhs - 1.5) < 1e-9);
 }
 
-// 17g. Regresión: una ración pastoril no rompe con V84.
+// 17g. V8 (FDN mínimo en CREC) ahora también es BLOCK.
 {
-  const r = formularRacionAvanzada({
-    pv: 250, sistemaId: 'pastoril', razaId: 'nelore', temperatura: 28,
-  });
-  if (!r.error) {
-    ok('Ración pastoril 250 kg: sin bloqueos de seguridad',
-       r.seguridad.bloqueos.length === 0);
-    ok('Ración pastoril 250 kg: V84 no aparece como bloqueo',
-       !r.seguridad.bloqueos.some((b) => b.id === 'V84'));
-  }
+  const { REGLAS } = await import('../src/engine/safety.js');
+  const v8 = REGLAS.find((r) => r.id === 'V8');
+  ok('V8 existe en REGLAS', !!v8);
+  ok('V8 es BLOCK (ya no WARN)', v8 && v8.sev === 'BLOCK');
+  ok('V8 tiene min 40', v8 && v8.min === 40);
+  ok('V8 aplica a CREC', v8 && v8.fase === 'CREC');
+}
+
+// 17h. V93a (Ca mínimo) ahora también es BLOCK.
+{
+  const { REGLAS } = await import('../src/engine/safety.js');
+  const v93a = REGLAS.find((r) => r.id === 'V93a');
+  ok('V93a existe en REGLAS', !!v93a);
+  ok('V93a es BLOCK (ya no WARN)', v93a && v93a.sev === 'BLOCK');
+  ok('V93a tiene min 0.4', v93a && v93a.min === 0.4);
+  ok('V93a aplica a CREC y TERM',
+     v93a && Array.isArray(v93a.fase) && v93a.fase.includes('CREC') && v93a.fase.includes('TERM'));
+}
+
+// 17i. Con las 3 reglas como BLOCK, una dieta de referencia al límite se rechaza.
+{
+  // Dieta que antes pasaba WARN y ahora debería ser BLOQUEADA:
+  // peNDF 12 %, FDN 38 %, Ca 0.35 % → 3 fallas de BLOCK.
+  const mala = evaluarSeguridad({
+    peNdfPct: 12, ndfPct: 38, almidonPct: 25, forrajePct: 30, concentradoPct: 70,
+    caPct: 0.35, pPct: 0.3, ratioCaP: 1.2,
+  }, 'CREC');
+  ok('Dieta con peNDF 12, FDN 38, Ca 0.35 → tiene al menos 3 bloqueos',
+     mala.bloqueos.length >= 3);
+  ok('Incluye bloqueo de V84 (peNDF)', mala.bloqueos.some((b) => b.id === 'V84'));
+  ok('Incluye bloqueo de V8 (FDN)', mala.bloqueos.some((b) => b.id === 'V8'));
+  ok('Incluye bloqueo de V93a (Ca)', mala.bloqueos.some((b) => b.id === 'V93a'));
+  ok('El validador devuelve ok=false', mala.ok === false);
 }
 // ---------------------------------------------------------------------------
 console.log('\n18. Override de alimentos (aplicar, detectar cambios, mergear)');
@@ -1274,7 +1304,7 @@ const {
 // 18e. mergeOverride aplica los cambios sobre el original.
 {
   const base = { id: 'maiz_x', nombre: 'Maíz', pb: 9.4, ca: 0.02, p: 0.32, ndf: 9.5 };
-  const override = { campos: { ca: 0.03, ndf: 10, fdn: 10 }, updatedAt: '2026-09-29' };
+  const override = { campos: { ca: 0.03, ndf: 10, fdn: 10 }, updatedAt: '2026-10-07' };
 
   const merged = mergeOverride(base, override);
 
@@ -1285,7 +1315,7 @@ const {
   ok('fdn del override pisa al de la base', merged.fdn === 10);
   ok('Nombre de la base se preserva', merged.nombre === 'Maíz');
   ok('Se marca con _override: true', merged._override === true);
-  ok('Se guarda la fecha del override', merged._overrideFecha === '2026-09-29');
+  ok('Se guarda la fecha del override', merged._overrideFecha === '2026-10-07');
   ok('Se conserva el original en _original', merged._original && merged._original.ca === 0.02);
 }
 
@@ -1305,8 +1335,8 @@ const {
     { id: 'soya', ca: 0.38, pb: 52.6 },
   ];
   const overrides = {
-    maiz: { campos: { ca: 0.03 }, updatedAt: '2026-09-29' },
-    soya: { campos: { ca: 0.40, pb: 55.0 }, updatedAt: '2026-09-29' },
+    maiz: { campos: { ca: 0.03 }, updatedAt: '2026-10-07' },
+    soya: { campos: { ca: 0.40, pb: 55.0 }, updatedAt: '2026-10-07' },
   };
 
   const resultado = aplicarOverrides(alimentos, overrides);
@@ -1350,7 +1380,7 @@ const {
   ok('maiz_amarillo existe en la base', !!maiz);
 
   const { campos } = camposModificados(maiz, { ca: '0.05' });
-  const merged = mergeOverride(maiz, { campos, updatedAt: '2026-09-29' });
+  const merged = mergeOverride(maiz, { campos, updatedAt: '2026-10-07' });
 
   ok('Override de ca en maíz real: ca = 0.05', merged.ca === 0.05);
   ok('Override de ca en maíz real: p se preserva', merged.p === maiz.p);
@@ -1363,3 +1393,4 @@ console.log('\n====================================================');
 console.log(`RESULTADO: ${pasaron} pasaron, ${fallaron} fallaron`);
 console.log('====================================================\n');
 process.exit(fallaron > 0 ? 1 : 0);
+}

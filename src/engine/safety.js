@@ -65,26 +65,26 @@ export const REGLAS = [
     mensaje: 'La fibra total está por debajo de 13 %: margen de seguridad estrecho, exige comedero muy parejo.',
   },
   {
-  id: 'V8', campo: 'ndfPct', min: 40, max: null, unidad: '% MS',
-  fase: FASE.CREC, sev: SEV.WARN,
-  nombre: 'FDN en crecimiento', previene: 'Acidosis, engrasamiento precoz',
-  fuente: 'AHDB', url: 'https://ahdb.org.uk/knowledge-library/growing-and-finishing-cattle-nutritional-guidance-for-dairy-beef',
-  mensaje: 'En crecimiento se recomienda no bajar de 40 % de FDN.',
-},
-{
-  id: 'V84', campo: 'peNdfPct', min: 15, max: null, unidad: '% MS',
-  fase: FASE.CREC, sev: SEV.WARN,
-  nombre: 'peNDF en crecimiento',
-  previene: 'SARA y acidosis subclínica durante el crecimiento',
-  // Umbral operativo del motor, no norma publicada. La fibra efectiva
-  // mínima publicada es 5 % (MSU P2489, regla V4) y los objetivos de
-  // engorde activo rondan 15 %. No hay una norma única publicada para
-  // CREC en el trópico; este valor es el colchón de seguridad que el
-  // motor considera prudente antes de dejar la dieta en el piso absoluto.
-  fuente: 'Umbral operativo del motor. Fibra efectiva mínima: MSU P2489',
-  url: 'https://extension.msstate.edu/sites/default/files/publications/publications/p2489.pdf',
-  mensaje: 'La fibra físicamente efectiva está por debajo del colchón de seguridad para crecimiento (15 %). No es un peligro inmediato, pero con dietas de concentrado alto conviene subir forraje o picarlo más grueso.',
-},
+    id: 'V8', campo: 'ndfPct', min: 40, max: null, unidad: '% MS',
+    fase: FASE.CREC, sev: SEV.BLOCK,
+    nombre: 'FDN en crecimiento', previene: 'Acidosis, engrasamiento precoz',
+    fuente: 'AHDB', url: 'https://ahdb.org.uk/knowledge-library/growing-and-finishing-cattle-nutritional-guidance-for-dairy-beef',
+    mensaje: 'En crecimiento la FDN no puede bajar de 40 %. Con menos fibra el rumen se acidifica y el animal engorda antes de tiempo.',
+  },
+  {
+    id: 'V84', campo: 'peNdfPct', min: 15, max: null, unidad: '% MS',
+    fase: FASE.CREC, sev: SEV.BLOCK,
+    nombre: 'peNDF en crecimiento',
+    previene: 'SARA y acidosis subclínica durante el crecimiento',
+    // Umbral operativo del motor, no norma publicada. La fibra efectiva
+    // mínima publicada es 5 % (MSU P2489, regla V4) y los objetivos de
+    // engorde activo rondan 15 %. No hay una norma única publicada para
+    // CREC en el trópico; este valor es el colchón de seguridad que el
+    // motor considera prudente antes de dejar la dieta en el piso absoluto.
+    fuente: 'Umbral operativo del motor. Fibra efectiva mínima: MSU P2489',
+    url: 'https://extension.msstate.edu/sites/default/files/publications/publications/p2489.pdf',
+    mensaje: 'La fibra físicamente efectiva está por debajo del 15 % en crecimiento. El rumen no puede sostener el pH con tan poca fibra efectiva: hay que subir forraje o picarlo más grueso.',
+  },
   {
     id: 'V9', campo: 'forrajePct', min: 5, max: null, unidad: '% MS',
     fase: FASE.TERM, sev: SEV.BLOCK,
@@ -252,12 +252,12 @@ export const REGLAS = [
     fuente: 'NASEM', url: 'https://www.ncbi.nlm.nih.gov/books/NBK600600/',
     mensaje: 'Fósforo muy alto: en los novillos castrados forma cálculos que tapan la uretra. Es una urgencia y suele terminar en muerte.',
   },
-  {
+    {
     id: 'V93a', campo: 'caPct', min: 0.4, max: null, unidad: '% MS',
-    fase: [FASE.CREC, FASE.TERM], sev: SEV.WARN,
+    fase: [FASE.CREC, FASE.TERM], sev: SEV.BLOCK,
     nombre: 'Calcio mínimo', previene: 'Desmineralización ósea',
     fuente: 'OSU Feedlot Primer', url: 'https://agnr.osu.edu/sites/agnr/files/imce/pdfs/Beef/feedlot_0.pdf',
-    mensaje: 'Falta calcio en la dieta. Agregar carbonato de calcio o sal mineral.',
+    mensaje: 'La dieta no alcanza el calcio mínimo (0,4 % de la MS). Sin ese piso el animal desmineraliza hueso y aparecen problemas de aplomos. Hay que agregar carbonato de calcio o una sal mineral.',
   },
   {
     id: 'V93b',
