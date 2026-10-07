@@ -226,7 +226,8 @@ export function limitesVigentes(fase, contexto = {}, opts = {}) {
  */
 export function construirRestricciones({
   alimentos, dmi, pv, fase,
-  emRequerida, pbRequeridaKg, pdrRequeridaKg, caRequeridaG, pRequeridaG,
+  emRequerida,
+  pbRequeridaKg, pdrRequeridaKg, caRequeridaG, pRequeridaG,
   sistemaId,
   contexto = {}, exigirWarn = true,
   // Criterios de practicidad (NO son normas publicadas, ver bloque 9)

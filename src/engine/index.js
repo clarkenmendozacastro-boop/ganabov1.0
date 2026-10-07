@@ -351,6 +351,7 @@ export function formularRacionAvanzada({
     );
   }
 
+
   const mp = mpRequerida(animal, adgObjetivo, negObj.re ?? null);
   const minReq = mineralesRequeridos(animal, adgObjetivo);
 
@@ -390,10 +391,8 @@ export function formularRacionAvanzada({
   let x = null, solucion = null, indic = null;
   let contexto = { fndfPct: 15 };
   for (let pasada = 0; pasada < 2; pasada++) {
-    const { rows } = construirRestricciones({
+       const { rows } = construirRestricciones({
       alimentos, dmi, pv: num(pv), fase: faseSeg,
-      // sistemaId es obligatorio para que V93b resuelva su mínimo contra
-      // pMinVigente(). Si no se pasa, la fila WARN de fósforo no se emite.
       sistemaId,
       emRequerida: emReq.me * dmi,
       pbRequeridaKg, pdrRequeridaKg,
