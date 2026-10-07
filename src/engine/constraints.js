@@ -298,28 +298,27 @@ export function construirRestricciones({
     const aporta = coef.some((c) => c !== 0);
     const base = CAMPOS_POR_PV.has(campo) ? pv : dmi;
 
-    const push = (op, pct, sev) => {
+        const push = (op, pct, sev) => {
       if (pct === null || pct === undefined) return;
       if (op === '>=' && !aporta) return;
-      // Margen del 1 % contra el límite duro. Sin esto el solver se para
-      // EXACTAMENTE sobre el límite (grasa 6,000 %) y el validador, que usa
-      // aritmética de punto flotante, lo lee como violado. El margen se aplica
-      // hacia el lado seguro: los máximos se bajan y los mínimos se suben.
       const margen = sev === SEV.BLOCK ? 0.01 : 0;
       const pctAjustado = op === '<=' ? pct * (1 - margen) : pct * (1 + margen);
 
-      // Nombre de la fila: usar SOLO las reglas que aportaron este límite
-      // específico, no todas las que tocan el campo. Así el mínimo de fósforo
-      // dice "(V93b)" y el máximo dice "(V81)", en lugar del confuso
-      // "(V81/V93b)" en ambas.
       const kReglas = sev === SEV.BLOCK
         ? (op === '>=' ? 'reglasMinBlock' : 'reglasMaxBlock')
         : (op === '>=' ? 'reglasMinWarn' : 'reglasMaxWarn');
       const reglasDelLimite = (l[kReglas] && l[kReglas].length) ? l[kReglas] : l.reglas;
 
+      // V93b (fósforo mínimo del sistema) es WARN, pero con un penalty más
+      // alto que las demás WARN. Con penalty 20 el solver prefería pagar el
+      // penalty antes que gastar Bs 0.10 en fosfato bicálcico, y dejaba la
+      // dieta corta de fósforo. Con penalty 500 el solver pone el fosfato.
+      const esV93b = reglasDelLimite.includes('V93b');
+      const penaltyValue = sev === SEV.WARN ? (esV93b ? 500 : 20) : undefined;
+
       rows.push({
         coef: [...coef], op, rhs: (pctAjustado / 100) * base,
-        elastic: sev === SEV.WARN, penalty: sev === SEV.WARN ? 20 : undefined,
+        elastic: sev === SEV.WARN, penalty: penaltyValue,
         name: `${campo} ${op} ${pct}% (${reglasDelLimite.join('/')})`,
         campo, limitePct: pct, severidad: sev,
       });

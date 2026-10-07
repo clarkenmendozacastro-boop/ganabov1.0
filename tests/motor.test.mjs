@@ -345,8 +345,13 @@ ok('pMinVigente({ sistemaId: "desconocido" }) === null',
   ok('LP sin sistemaId: NO se emite la fila V93b', sinV93b.length === 0);
 
   // La fila WARN es blanda: penalización baja comparada con un BLOCK.
-  ok('LP con sistemaId: la penalización de V93b es menor que la de un BLOCK',
-     filaV93b && typeof filaV93b.penalty === 'number' && filaV93b.penalty < 100);
+    // V93b tiene penalty 500 (más alto que las WARN comunes de 20) para que el
+  // solver prefiera poner fosfato bicálcico antes que aceptar un déficit de
+  // fósforo. Sigue siendo menor que las filas duras (BLOCK sin penalty).
+  ok('LP con sistemaId: la penalización de V93b es 500',
+     filaV93b && filaV93b.penalty === 500);
+  ok('LP con sistemaId: V93b sigue siendo WARN (no BLOCK)',
+     filaV93b && filaV93b.severidad === 'WARN');
 
   // La fila V81 de máximo BLOCK sigue existiendo y NO lleva `elastic`.
   const filaV81 = rowsCon.find((r) => r.campo === 'pPct' && r.op === '<=');
