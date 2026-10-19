@@ -73,7 +73,7 @@ export const REGLAS = [
   },
   {
     id: 'V84', campo: 'peNdfPct', min: 15, max: null, unidad: '% MS',
-    fase: FASE.CREC, sev: SEV.BLOCK,
+    fase: [FASE.RECEP, FASE.CREC], sev: SEV.BLOCK,
     nombre: 'peNDF en crecimiento',
     previene: 'SARA y acidosis subclínica durante el crecimiento',
     // Umbral operativo del motor, no norma publicada. La fibra efectiva
@@ -101,7 +101,7 @@ export const REGLAS = [
   },
   {
     id: 'V16', campo: 'almidonPct', min: null, max: 20, unidad: '% MS',
-    fase: FASE.CREC, sev: SEV.WARN,
+    fase: FASE.CREC, sev: SEV.BLOCK,
     nombre: 'Almidón en crecimiento', previene: 'Acidosis, engrasamiento precoz',
     fuente: 'AHDB', url: 'https://ahdb.org.uk/knowledge-library/growing-and-finishing-cattle-nutritional-guidance-for-dairy-beef',
     mensaje: 'Mucho almidón en crecimiento engrasa antes de tiempo y arriesga acidosis.',
