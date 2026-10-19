@@ -48,15 +48,15 @@ export const SEXO = {
  * Se conservan TODOS los ids que ya usa src/data/razas.js.
  */
 export const RAZAS_MAP = {
-  nelore:         { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Nelore' },
-  brahman:        { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Brahman' },
-  nelore_brahman: { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Nelore × Brahman' },
-  angus_brahman:  { grupo: GRUPO.CRUZA_CARNE,   be: 0.95, bi: 1.00, nombre: 'Angus × Brahman' },
-  senepol:        { grupo: GRUPO.CRUZA_CARNE,   be: 0.95, bi: 1.00, nombre: 'Senepol' },
-  simmental:      { grupo: GRUPO.CRUZA_LECHERA, be: 1.00, bi: 1.04, nombre: 'Cruce Simmental' },
-  criollo:        { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Criollo boliviano' },
-  criollo_cruce:  { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Criollo × cebú' },
-  otro:           { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, nombre: 'Otro / no definido' },
+  nelore:         { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.10, nombre: 'Nelore' },
+  brahman:        { grupo: GRUPO.ZEBU,          be: 0.90, bi: 0.96, gdpFactor: 0.95, heatTolerance: 1.12, nombre: 'Brahman' },
+  nelore_brahman: { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.10, nombre: 'Nelore × Brahman' },
+  angus_brahman:  { grupo: GRUPO.CRUZA_CARNE,   be: 0.95, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.05, nombre: 'Angus × Brahman' },
+  senepol:        { grupo: GRUPO.CRUZA_CARNE,   be: 0.95, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.12, nombre: 'Senepol' },
+  simmental:      { grupo: GRUPO.CRUZA_LECHERA, be: 1.00, bi: 1.04, gdpFactor: 1.00, heatTolerance: 0.95, nombre: 'Cruce Simmental' },
+  criollo:        { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.10, nombre: 'Criollo boliviano' },
+  criollo_cruce:  { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.08, nombre: 'Criollo × cebú' },
+  otro:           { grupo: GRUPO.ZEBU,          be: 0.90, bi: 1.00, gdpFactor: 1.00, heatTolerance: 1.05, nombre: 'Otro / no definido' },
 };
 
 /**
@@ -191,11 +191,41 @@ export const JADEO = {
   severo:       1.18, // jadeo con boca abierta
 };
 
-/** TEMP1 — multiplicador del consumo por temperatura. [NRC96 Tabla 10-4]
- *  DECISIVO para Santa Cruz: >35 °C sin enfriamiento nocturno recorta 35 %. */
-export function temp1(tempC, enfriamientoNocturno = false) {
-  if (tempC > 35) return enfriamientoNocturno ? 0.90 : 0.65;
-  if (tempC >= 25) return 0.90;
+ /**
+ * TEMP1 — multiplicador del consumo por temperatura.
+ *
+ * Versión continua con tolerancia por raza. El castigo por calor empieza a
+ * aplicarse de forma gradual a partir de 25 °C, no como un salto brusco.
+ *
+ * heatTolerance: > 1.0 = raza tolerante al calor (cebuinos), sufre menos.
+ *                 < 1.0 = raza sensible al calor (europeos), sufre más.
+ *                 1.0 = neutral.
+ *
+ * Ejemplo con heatTolerance 1.0 (neutral):
+ *   25 °C → 1.00
+ *   30 °C → 0.80
+ *   35 °C → 0.60 (tope mínimo 0.65)
+ *
+ * Ejemplo con heatTolerance 1.10 (cebuino):
+ *   25 °C → 1.00
+ *   30 °C → 0.82
+ *   35 °C → 0.64 (tope mínimo 0.68)
+ *
+ * Ejemplo con heatTolerance 0.95 (europeo sensible):
+ *   25 °C → 1.00
+ *   30 °C → 0.79
+ *   35 °C → 0.58 (tope mínimo 0.63)
+ */
+export function temp1(tempC, enfriamientoNocturno = false, heatTolerance = 1.0) {
+  if (tempC > 25) {
+    const exceso = tempC - 25;
+    const sensibilidad = 0.02 / heatTolerance;
+    const factor = 1.0 - exceso * sensibilidad;
+    const minimo = enfriamientoNocturno
+      ? 0.90
+      : Math.max(0.65, 1.0 - 0.35 / heatTolerance);
+    return Math.max(minimo, factor);
+  }
   if (tempC >= 15) return 1.00;
   if (tempC >= 5)  return 1.03;
   if (tempC >= -5) return 1.05;

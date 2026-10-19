@@ -22,7 +22,7 @@
 // research/seguridad.md y las URLs citadas en cada módulo.
 
 import {
-  SISTEMAS, FASES_FEEDLOT, CALIDAD, RATIO_CA_P, normalizarSexo,
+  SISTEMAS, FASES_FEEDLOT, CALIDAD, RATIO_CA_P, normalizarSexo, RAZAS_MAP,
 } from './standards.js';
 import { perfilAnimal, nemRequerido, negRequerido, mineralesRequeridos, mpRequerida } from './animal.js';
 import { perfilEnergetico, meRequeridaParaObjetivo, corregirTdnEstimado } from './energy.js';
@@ -131,10 +131,16 @@ function aplicarCalidad(a, estado) {
 }
 
 /** Objetivo de ganancia según sistema y fase, si el usuario no fijó uno. */
-function objetivoGdp(sistemaId, fase) {
-  if (fase && FASES_FEEDLOT[fase]) return FASES_FEEDLOT[fase].gdpEsperado;
-  const s = SISTEMAS[sistemaId] || SISTEMAS.semiIntensivo;
-  return (s.gdpRango[0] + s.gdpRango[1]) / 2;
+function objetivoGdp(sistemaId, fase, razaId = 'otro') {
+  let base;
+  if (fase && FASES_FEEDLOT[fase]) {
+    base = FASES_FEEDLOT[fase].gdpEsperado;
+  } else {
+    const s = SISTEMAS[sistemaId] || SISTEMAS.semiIntensivo;
+    base = (s.gdpRango[0] + s.gdpRango[1]) / 2;
+  }
+  const raza = RAZAS_MAP[razaId] || RAZAS_MAP.otro;
+  return base * (raza.gdpFactor ?? 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +317,9 @@ export function formularRacionAvanzada({
   const animal = perfilAnimal({
     pv: num(pv), razaId, sexo: normalizarSexo(sexo), entorno: sistema.entorno,
   });
-  const adgObjetivo = num(gdpObjetivo, objetivoGdp(sistemaId, fase));
+  // Si el usuario ingresó una GDP manual (gdpObjetivo), se respeta tal cual.
+  // Si está vacío, el motor usa el default del sistema ajustado por raza (gdpFactor).
+  const adgObjetivo = num(gdpObjetivo, objetivoGdp(sistemaId, fase, razaId));
   explicaciones.push(
     `Animal de ${num(pv)} kg, ${animal.fichaRaza?.nombre || razaId}, en sistema ${sistema.nombre}. ` +
     `Objetivo de ganancia: ${adgObjetivo.toFixed(2)} kg/día.`,
@@ -418,7 +426,7 @@ export function formularRacionAvanzada({
       rows.push({
         coef: alimentos.map((a) => (esConcentrado(a) ? 1 : 0)),
         op: '<=', rhs: (Math.min(topeConcPct + 5, 92) / 100) * dmi,
-        elastic: true, penalty: 1500,
+        elastic: true, penalty: 3000,
         name: `concentrado <= ${topeConcPct + 5}% MS (sistema ${sistema.nombre}${fichaFase ? ', fase ' + fichaFase.nombre : ''})`,
       });
     }
@@ -440,11 +448,15 @@ export function formularRacionAvanzada({
 
   // Faltantes que el solver no pudo cubrir: se informan como deficiencias
   // concretas en vez de un "infactible" sin explicación.
-  const deficiencias = (solucion.violations || []).map((v) => ({
-    nutriente: v.name,
-    faltante: v.amount,
-    mensaje: mensajeDeficiencia(v),
-  }));
+      const deficiencias = (solucion.violations || [])
+    // Filtramos el ruido numérico del solver (menos de 5 gramos, 0.005 kg, 0.005 Mcal).
+    // Así evitamos mostrar "Falta PDR: 0.00 kg".
+    .filter((v) => Math.abs(v.amount) > 0.005) 
+    .map((v) => ({
+      nutriente: v.name,
+      faltante: v.amount,
+      mensaje: mensajeDeficiencia(v),
+    }));
 
   // --- 6. Predicción de desempeño con la ración REAL -----------------------
   // Se descartan las cantidades que en la práctica no se pueden pesar: menos

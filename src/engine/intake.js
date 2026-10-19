@@ -89,17 +89,14 @@ export function multiplicadoresDmi(animal, opts = {}) {
     factorCalidadConsumo = 1.0,
   } = opts;
 
-  // Ajuste por calor. OJO con el doble descuento: la ecuación de BR-CORTE se
-  // calibró con cebú en Brasil, o sea con animales que YA estaban comiendo a
-  // 28-32 °C. Descontarles otra vez por temperatura es castigarlos dos veces y
-  // por eso el motor predecía consumos de 1,4 % del peso vivo, imposibles en un
-  // corral real. En cebú (Bos indicus) el descuento del NRC se aplica solo por
-  // encima de 32 °C, que es donde el estrés calórico deja de estar cubierto por
-  // la calibración tropical.
-  const esCebu = (animal.raza?.bi ?? 1) >= 1 || animal.raza?.tipo === 'cebuino';
-  const fTemp = esCebu && temperatura <= 32
-    ? 1.0
-    : temp1(temperatura, enfriamientoNocturno);
+  // Ajuste por calor. Usamos una curva continua que depende de la raza
+  // a través de heatTolerance. Se eliminó el corte abrupto anterior
+  // que generaba un salto de consumo irreal entre 32 y 33 °C.
+  const fTemp = temp1(
+    temperatura,
+    enfriamientoNocturno,
+    animal.raza?.heatTolerance ?? 1.0
+  );
   const fBarro = MUD1[barro] ?? 1.0;
   const fBfaf = bfaf(animal.eqebw / 0.891); // BFAF está tabulado sobre EQSBW
   const fRaza = animal.raza.bi ?? 1.0;

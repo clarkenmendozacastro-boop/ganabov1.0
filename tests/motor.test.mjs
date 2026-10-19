@@ -1102,7 +1102,15 @@ console.log('\n17. V84 (peNDF mínimo en CREC, ahora BLOCK) y techo de bagazo');
   ok('V84 tiene campo "peNdfPct"', v84 && v84.campo === 'peNdfPct');
   ok('V84 tiene min 15', v84 && v84.min === 15);
   ok('V84 tiene max null', v84 && v84.max === null);
-  ok('V84 aplica a fase CREC', v84 && v84.fase === 'CREC');
+    ok('V84 aplica a CREC', v84 && (
+    v84.fase === 'CREC' || (Array.isArray(v84.fase) && v84.fase.includes('CREC'))
+  ));
+  ok('V84 aplica a RECEP (adaptación al corral)', v84 && (
+    v84.fase === 'RECEP' || (Array.isArray(v84.fase) && v84.fase.includes('RECEP'))
+  ));
+  ok('V84 NO aplica a TERM', v84 && (
+    v84.fase !== 'TERM' && !(Array.isArray(v84.fase) && v84.fase.includes('TERM'))
+  ));
   ok('V84 es BLOCK (ya no WARN)', v84 && v84.sev === 'BLOCK');
 }
 
@@ -1392,6 +1400,28 @@ const {
   ok('Override de ca en maíz real: pb se preserva', merged.pb === maiz.pb);
   ok('Override de ca en maíz real: _original es el maíz de la base',
      merged._original === maiz);
+}
+// ---------------------------------------------------------------------------
+console.log('\n19. Curva de calor (temp1) - Continuidad y tolerancia por raza');
+// ---------------------------------------------------------------------------
+{
+  const { temp1 } = await import('../src/engine/standards.js');
+
+  // Nelore (heatTolerance 1.10) - Rango tropical
+  cerca('Nelore a 25 °C', temp1(25, false, 1.10), 1.00, 0.01);
+  cerca('Nelore a 31 °C', temp1(31, false, 1.10), 0.89, 0.01);
+  cerca('Nelore a 35 °C', temp1(35, false, 1.10), 0.82, 0.01);
+  cerca('Nelore a 41 °C', temp1(41, false, 1.10), 0.71, 0.01);
+
+  // Simmental (heatTolerance 0.95) - Sensible al calor
+  cerca('Simmental a 31 °C', temp1(31, false, 0.95), 0.87, 0.01);
+  cerca('Simmental a 41 °C', temp1(41, false, 0.95), 0.66, 0.01);
+
+  // Continuidad (No debe haber salto brusco entre 24.9 y 25.1 °C)
+  cerca('Continuidad a 24.9 °C', temp1(24.9, false, 1.10), 1.00, 0.01);
+  ok('Continuidad a 25.1 °C > 0.99', temp1(25.1, false, 1.10) > 0.99);
+  ok('No hay salto entre 24.9 y 25.1', 
+     Math.abs(temp1(25.1, false, 1.10) - temp1(24.9, false, 1.10)) < 0.02);
 }
 // ---------------------------------------------------------------------------
 console.log('\n====================================================');
