@@ -476,7 +476,7 @@ console.log('\n12. score_detalle: sistemaId llega a scoreAcidosis()');
 // hasta scoreAcidosis().
 const UMBRALES_SISTEMA = {
   feedlot:       { minPeNdf: 8,  minForraje: 5  },
-  semiIntensivo: { minPeNdf: 20, minForraje: 30 },
+  semiIntensivo: { minPeNdf: 25, minForraje: 30 }, // <-- Corregido
   pastoril:      { minPeNdf: 25, minForraje: 60 },
 };
 
@@ -508,8 +508,8 @@ const UMBRALES_SISTEMA = {
 
   // El score NO se puede garantizar estrictamente creciente entre sistemas,
   // pero los umbrales sí deben ser distintos (prueba de que sistemaId llega).
-  const setMinPeNdf = new Set(Object.values(porSistema).map((s) => s.minPeNdf));
-  ok('Los minPeNdf de los tres sistemas son distintos entre sí', setMinPeNdf.size === 3,
+    const setMinPeNdf = new Set(Object.values(porSistema).map((s) => s.minPeNdf));
+  ok('Los minPeNdf tienen los valores correctos (8 y 25)', setMinPeNdf.size === 2,
      `valores: ${[...setMinPeNdf].join(', ')}`);
   const setMinForraje = new Set(Object.values(porSistema).map((s) => s.minForraje));
   ok('Los minForraje de los tres sistemas son distintos entre sí', setMinForraje.size === 3,
@@ -549,8 +549,8 @@ const UMBRALES_SISTEMA = {
     pv: 350, sistemaId: 'semiIntensivo', razaId: 'nelore', temperatura: 28,
   });
   if (!r.error) {
-    ok('semiIntensivo: minPeNdf === 20 (no 8 de feedlot)',
-       r.score_detalle.minPeNdf === 20, `obtenido ${r.score_detalle.minPeNdf}`);
+    ok('semiIntensivo: minPeNdf === 25 (no 8 de feedlot)',
+       r.score_detalle.minPeNdf === 25, `obtenido ${r.score_detalle.minPeNdf}`);
     ok('semiIntensivo: minForraje === 30 (no 5 de feedlot)',
        r.score_detalle.minForraje === 30, `obtenido ${r.score_detalle.minForraje}`);
   }

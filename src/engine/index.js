@@ -415,17 +415,19 @@ export function formularRacionAvanzada({
     // son más exigentes: en "desarrollo" la dieta va al 72 % de concentrado, no
     // al 90 %. Sin esta fila el balanceador respetaba la norma general y se
     // pasaba por arriba del plan de alimentación elegido.
-    const topeConcPct = Math.min(
+        let topeConcPct = Math.min(
       num(fichaFase?.concentradoMaxPct, sistema.concentradoMaxPct),
       num(sistema.concentradoMaxPct, 90),
     );
+    // En semi-intensivo, el techo de 60% es duro. Sin margen extra.
+    if (sistemaId === 'semiIntensivo') topeConcPct = 60;
     if (topeConcPct > 0) {
       // 5 puntos de tolerancia: el techo de la fase es una guía de manejo, no un
       // límite fisiológico, y no vale la pena volver infactible el problema por
       // uno o dos puntos de concentrado.
       rows.push({
         coef: alimentos.map((a) => (esConcentrado(a) ? 1 : 0)),
-        op: '<=', rhs: (Math.min(topeConcPct + 5, 92) / 100) * dmi,
+        op: '<=', rhs: (Math.min(topeConcPct, 92) / 100) * dmi,
         elastic: true, penalty: 3000,
         name: `concentrado <= ${topeConcPct + 5}% MS (sistema ${sistema.nombre}${fichaFase ? ', fase ' + fichaFase.nombre : ''})`,
       });
@@ -464,7 +466,8 @@ export function formularRacionAvanzada({
   // lista y la pantalla las mostraba como "0.00 kg", que no le sirve a nadie.
   const racionItems = alimentos.map((a, i) => ({
     ...a, kgMs: x[i], energia: a.energia,
-  })).filter((it) => it.kgMs > 0.001 && it.kgMs / Math.max(msFraccion(it), 0.05) >= 0.005);
+    // Filtramos cualquier ingrediente que pese menos de 100 gramos/día
+  })).filter((it) => it.kgMs > 0.001 && it.kgMs / Math.max(msFraccion(it), 0.05) >= 0.10);
 
   const pred = predecirDesempeno({
     pv: num(pv), razaId, sexo: normalizarSexo(sexo), sistemaId,
@@ -628,7 +631,10 @@ export function formularRacionAvanzada({
       conversion: pred.conversion,
       riesgo_acidosis: score.nivel ?? score.riesgo ?? null,
       score_acidosis: score.score ?? score,
-      cumplimiento_energia: emReq.me > 0 ? (pred.densidad.me / emReq.me) * 100 : null,
+            // Calcula el porcentaje real sobre la ENm total aportada vs requerida
+      cumplimiento_energia: (mant.nem + negMcal) > 0 
+        ? ((pred.densidad.nem * pred.dmi) / (mant.nem + negMcal)) * 100 
+        : null,
       cumplimiento_proteina: pbRequeridaKg > 0
         ? ((racionItems.reduce((s, it) => s + it.kgMs * num(it.pb), 0) / 100) / pbRequeridaKg) * 100
         : null,

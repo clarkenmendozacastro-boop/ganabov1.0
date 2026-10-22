@@ -493,9 +493,9 @@ export function scoreAcidosis({
     desconocido: 0, ionoforo: 0, fase: 0,
   };
 
-  const minPeNdf =
+    const minPeNdf =
     sistemaId === 'feedlot' ? 8
-  : sistemaId === 'semiIntensivo' ? 20
+  : sistemaId === 'semiIntensivo' ? 25
   : 25;
 
   const deltaPeNdf = peNdfPct - minPeNdf;
